@@ -1,8 +1,27 @@
+import AppKit
 import Foundation
 import MoriCore
 import MoriGit
 import MoriPersistence
 import MoriTmux
+
+/// Errors specific to WorkspaceManager operations.
+enum WorkspaceError: Error, LocalizedError {
+    case projectNotFound
+    case branchNameEmpty
+    case branchNameInvalid(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .projectNotFound:
+            return "Project not found."
+        case .branchNameEmpty:
+            return "Branch name cannot be empty."
+        case .branchNameInvalid(let name):
+            return "Invalid branch name: \"\(name)\"."
+        }
+    }
+}
 
 /// Coordinates project/worktree/window selection flow across AppState,
 /// persistence, and tmux backend. Lives in the app target to avoid
@@ -192,6 +211,156 @@ final class WorkspaceManager {
         selectProject(project.id)
 
         return project
+    }
+
+    // MARK: - Create Worktree
+
+    /// Create a new worktree for a project: git worktree add, DB save, tmux session, template apply.
+    /// Partial failure: if git succeeds but tmux fails, worktree is still saved to DB.
+    /// If git fails, no DB write occurs.
+    @discardableResult
+    func createWorktree(projectId: UUID, branchName: String) async throws -> Worktree {
+        guard let project = appState.projects.first(where: { $0.id == projectId }) else {
+            throw WorkspaceError.projectNotFound
+        }
+
+        let projectSlug = SessionNaming.slugify(project.name)
+        let branchSlug = SessionNaming.slugify(branchName)
+
+        // Compute worktree path: ~/.mori/{project-slug}/{branch-slug}
+        let moriDir = (NSHomeDirectory() as NSString).appendingPathComponent(".mori")
+        let projectDir = (moriDir as NSString).appendingPathComponent(projectSlug)
+        let worktreePath = (projectDir as NSString).appendingPathComponent(branchSlug)
+
+        // Ensure directory tree exists
+        try FileManager.default.createDirectory(
+            atPath: projectDir,
+            withIntermediateDirectories: true
+        )
+
+        // Step 1: git worktree add (if this fails, nothing else happens)
+        try await gitBackend.addWorktree(
+            repoPath: project.repoRootPath,
+            path: worktreePath,
+            branch: branchName,
+            createBranch: true
+        )
+
+        // Step 2: Create Worktree model and save to DB
+        let sessionName = SessionNaming.sessionName(project: project.name, worktree: branchName)
+        let worktree = Worktree(
+            projectId: projectId,
+            name: branchName,
+            path: worktreePath,
+            branch: branchName,
+            isMainWorktree: false,
+            tmuxSessionName: sessionName,
+            status: .active
+        )
+        try worktreeRepo.save(worktree)
+
+        // Step 3: Create tmux session + apply template (partial failure tolerant)
+        do {
+            _ = try await tmuxBackend.createSession(name: sessionName, cwd: worktreePath)
+            let applicator = TemplateApplicator(tmux: tmuxBackend)
+            try await applicator.apply(
+                template: TemplateRegistry.basic,
+                sessionId: sessionName,
+                cwd: worktreePath
+            )
+        } catch {
+            // tmux failure is non-fatal — session will be created on next select
+        }
+
+        // Step 4: Update app state
+        appState.worktrees.append(worktree)
+        selectWorktree(worktree.id)
+
+        return worktree
+    }
+
+    // MARK: - Remove Worktree
+
+    /// Remove a worktree with confirmation dialog.
+    /// "Remove from Mori" = soft delete (mark unavailable).
+    /// "Remove from Mori and delete files" = soft delete + git worktree remove.
+    func removeWorktree(worktreeId: UUID) async {
+        guard let index = appState.worktrees.firstIndex(where: { $0.id == worktreeId }) else { return }
+        let worktree = appState.worktrees[index]
+
+        // Don't allow removing the main worktree
+        if worktree.isMainWorktree {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Cannot remove main worktree"
+            alert.informativeText = "The main worktree is tied to the project's root directory and cannot be removed."
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            return
+        }
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Remove worktree \"\(worktree.name)\"?"
+        alert.informativeText = "This worktree is at \(worktree.path)"
+        alert.addButton(withTitle: "Remove from Mori")
+        alert.addButton(withTitle: "Remove from Mori and Delete Files")
+        alert.addButton(withTitle: "Cancel")
+
+        let response = alert.runModal()
+
+        switch response {
+        case .alertFirstButtonReturn:
+            // Soft delete — mark unavailable
+            softDeleteWorktree(at: index)
+
+        case .alertSecondButtonReturn:
+            // Hard delete — git worktree remove + soft delete
+            softDeleteWorktree(at: index)
+            if let project = appState.projects.first(where: { $0.id == worktree.projectId }) {
+                do {
+                    try await gitBackend.removeWorktree(
+                        repoPath: project.repoRootPath,
+                        path: worktree.path,
+                        force: false
+                    )
+                } catch {
+                    let errorAlert = NSAlert()
+                    errorAlert.alertStyle = .warning
+                    errorAlert.messageText = "Failed to delete worktree files"
+                    errorAlert.informativeText = error.localizedDescription
+                    errorAlert.addButton(withTitle: "OK")
+                    errorAlert.runModal()
+                }
+            }
+
+            // Kill tmux session if exists
+            if let sessionName = worktree.tmuxSessionName {
+                try? await tmuxBackend.killSession(id: sessionName)
+            }
+
+        default:
+            // Cancel — do nothing
+            break
+        }
+    }
+
+    /// Mark a worktree as unavailable and persist. Also deselect if currently selected.
+    private func softDeleteWorktree(at index: Int) {
+        appState.worktrees[index].status = .unavailable
+        try? worktreeRepo.save(appState.worktrees[index])
+
+        // If this was the selected worktree, clear selection
+        if appState.uiState.selectedWorktreeId == appState.worktrees[index].id {
+            appState.uiState.selectedWorktreeId = nil
+            appState.uiState.selectedWindowId = nil
+            // Auto-select another active worktree
+            let active = appState.worktreesForSelectedProject.filter { $0.status == .active }
+            if let first = active.first {
+                selectWorktree(first.id)
+            }
+            saveUIState()
+        }
     }
 
     // MARK: - Tmux Integration
