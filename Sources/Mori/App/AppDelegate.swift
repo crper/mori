@@ -75,16 +75,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let windowController = MainWindowController()
         self.mainWindowController = windowController
 
-        // Wire "Add Project" toolbar action
-        windowController.onAddProject = { [weak self] in
-            self?.showAddProjectPanel()
-        }
-
         // Build split view children
         let railController = ProjectRailHostingController(
             appState: state,
             onSelect: { [weak manager] projectId in
                 manager?.selectProject(projectId)
+            },
+            onAddProject: { [weak self] in
+                self?.showAddProjectPanel()
+            },
+            onOpenSettings: { [weak self] in
+                self?.showSettingsWindow()
+            },
+            onToggleSidebar: { [weak self] in
+                self?.rootSplitVC?.toggleSidebar()
             }
         )
 
@@ -119,11 +123,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             contentController: terminalArea
         )
         self.rootSplitVC = splitVC
-
-        // Wire sidebar toggle toolbar button
-        windowController.onToggleSidebar = { [weak splitVC] in
-            splitVC?.toggleSidebar()
-        }
 
         windowController.contentViewController = splitVC
         windowController.showWindow(nil)

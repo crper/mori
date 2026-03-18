@@ -9,8 +9,20 @@ import MoriUI
 @MainActor
 final class ProjectRailHostingController: NSHostingController<ProjectRailContentView> {
 
-    init(appState: AppState, onSelect: @escaping (UUID) -> Void) {
-        let rootView = ProjectRailContentView(appState: appState, onSelect: onSelect)
+    init(
+        appState: AppState,
+        onSelect: @escaping (UUID) -> Void,
+        onAddProject: (() -> Void)? = nil,
+        onOpenSettings: (() -> Void)? = nil,
+        onToggleSidebar: (() -> Void)? = nil
+    ) {
+        let rootView = ProjectRailContentView(
+            appState: appState,
+            onSelect: onSelect,
+            onAddProject: onAddProject,
+            onOpenSettings: onOpenSettings,
+            onToggleSidebar: onToggleSidebar
+        )
         super.init(rootView: rootView)
     }
 
@@ -24,12 +36,18 @@ final class ProjectRailHostingController: NSHostingController<ProjectRailContent
 struct ProjectRailContentView: View {
     @Bindable var appState: AppState
     let onSelect: (UUID) -> Void
+    let onAddProject: (() -> Void)?
+    let onOpenSettings: (() -> Void)?
+    let onToggleSidebar: (() -> Void)?
 
     var body: some View {
         ProjectRailView(
             projects: appState.projects,
             selectedProjectId: appState.uiState.selectedProjectId,
-            onSelect: onSelect
+            onSelect: onSelect,
+            onAddProject: onAddProject,
+            onOpenSettings: onOpenSettings,
+            onToggleSidebar: onToggleSidebar
         )
     }
 }
