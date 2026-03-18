@@ -30,6 +30,8 @@ public struct WorktreeRowView: View {
 
                 Spacer()
 
+                gitStatusBadges
+
                 statusIndicator
             }
             .padding(.vertical, 4)
@@ -40,6 +42,57 @@ public struct WorktreeRowView: View {
         .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 4))
     }
+
+    // MARK: - Git Status Badges
+
+    @ViewBuilder
+    private var gitStatusBadges: some View {
+        HStack(spacing: 4) {
+            // Dirty indicator (uncommitted changes)
+            if worktree.hasUncommittedChanges {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 6, height: 6)
+                    .help("Uncommitted changes")
+            }
+
+            // Ahead/behind counts
+            if worktree.aheadCount > 0 {
+                HStack(spacing: 1) {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 8))
+                    Text("\(worktree.aheadCount)")
+                        .font(.system(size: 10, design: .monospaced))
+                }
+                .foregroundStyle(.green)
+                .help("\(worktree.aheadCount) ahead of upstream")
+            }
+
+            if worktree.behindCount > 0 {
+                HStack(spacing: 1) {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 8))
+                    Text("\(worktree.behindCount)")
+                        .font(.system(size: 10, design: .monospaced))
+                }
+                .foregroundStyle(.red)
+                .help("\(worktree.behindCount) behind upstream")
+            }
+
+            // Unread count badge
+            if worktree.unreadCount > 0 {
+                Text("\(worktree.unreadCount)")
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Color.blue))
+                    .help("\(worktree.unreadCount) unread")
+            }
+        }
+    }
+
+    // MARK: - Status Indicator
 
     @ViewBuilder
     private var statusIndicator: some View {

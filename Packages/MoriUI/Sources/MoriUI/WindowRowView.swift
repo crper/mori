@@ -30,6 +30,8 @@ public struct WindowRowView: View {
 
                 Spacer()
 
+                windowBadgeView
+
                 if isActive {
                     Image(systemName: "circle.fill")
                         .font(.system(size: 6))
@@ -43,5 +45,40 @@ public struct WindowRowView: View {
         .buttonStyle(.plain)
         .background(isActive ? Color.accentColor.opacity(0.08) : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 4))
+    }
+
+    @ViewBuilder
+    private var windowBadgeView: some View {
+        if window.hasUnreadOutput {
+            Circle()
+                .fill(Color.blue)
+                .frame(width: 6, height: 6)
+                .help("Unread output")
+        } else if let badge = window.badge {
+            switch badge {
+            case .error:
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 6, height: 6)
+                    .help("Error")
+            case .running:
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 6, height: 6)
+                    .help("Running")
+            case .waiting:
+                Circle()
+                    .fill(Color.yellow)
+                    .frame(width: 6, height: 6)
+                    .help("Waiting")
+            case .unread:
+                Circle()
+                    .fill(Color.blue)
+                    .frame(width: 6, height: 6)
+                    .help("Unread")
+            case .idle:
+                EmptyView()
+            }
+        }
     }
 }
