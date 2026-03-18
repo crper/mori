@@ -449,6 +449,127 @@ func testFuzzyMatcherScoreOrdering() {
     assertTrue(wordScore > subScore, "word boundary should beat substring")
 }
 
+// MARK: - WindowTag Tests
+
+func testWindowTagRawValues() {
+    assertEqual(WindowTag.shell.rawValue, "shell")
+    assertEqual(WindowTag.editor.rawValue, "editor")
+    assertEqual(WindowTag.agent.rawValue, "agent")
+    assertEqual(WindowTag.server.rawValue, "server")
+    assertEqual(WindowTag.logs.rawValue, "logs")
+    assertEqual(WindowTag.tests.rawValue, "tests")
+}
+
+func testWindowTagCodable() {
+    for tag: WindowTag in [.shell, .editor, .agent, .server, .logs, .tests] {
+        let data = try! JSONEncoder().encode(tag)
+        let decoded = try! JSONDecoder().decode(WindowTag.self, from: data)
+        assertEqual(decoded, tag)
+    }
+}
+
+func testWindowTagSymbolNames() {
+    assertEqual(WindowTag.shell.symbolName, "terminal")
+    assertEqual(WindowTag.editor.symbolName, "pencil")
+    assertEqual(WindowTag.agent.symbolName, "cpu")
+    assertEqual(WindowTag.server.symbolName, "server.rack")
+    assertEqual(WindowTag.logs.symbolName, "doc.text")
+    assertEqual(WindowTag.tests.symbolName, "checkmark.circle")
+}
+
+func testWindowTagInference() {
+    assertEqual(WindowTag.infer(from: "shell"), .shell)
+    assertEqual(WindowTag.infer(from: "editor"), .editor)
+    assertEqual(WindowTag.infer(from: "agent"), .agent)
+    assertEqual(WindowTag.infer(from: "my-agent"), .agent)
+    assertEqual(WindowTag.infer(from: "server"), .server)
+    assertEqual(WindowTag.infer(from: "dev-server"), .server)
+    assertEqual(WindowTag.infer(from: "logs"), .logs)
+    assertEqual(WindowTag.infer(from: "app-logs"), .logs)
+    assertEqual(WindowTag.infer(from: "tests"), .tests)
+    assertEqual(WindowTag.infer(from: "test-runner"), .tests)
+    assertEqual(WindowTag.infer(from: "zsh"), .shell)
+    assertEqual(WindowTag.infer(from: "random-name"), .shell)
+}
+
+func testWindowTagInferenceCaseInsensitive() {
+    assertEqual(WindowTag.infer(from: "Agent"), .agent)
+    assertEqual(WindowTag.infer(from: "LOGS"), .logs)
+    assertEqual(WindowTag.infer(from: "Server"), .server)
+    assertEqual(WindowTag.infer(from: "Editor"), .editor)
+    assertEqual(WindowTag.infer(from: "Tests"), .tests)
+}
+
+func testRuntimeWindowWithTag() {
+    let win = RuntimeWindow(
+        tmuxWindowId: "@1",
+        worktreeId: UUID(),
+        title: "editor",
+        tag: .editor
+    )
+    assertEqual(win.tag, .editor)
+}
+
+func testRuntimeWindowTagDefaultNil() {
+    let win = RuntimeWindow(tmuxWindowId: "@1", worktreeId: UUID())
+    assertNil(win.tag)
+}
+
+func testRuntimeWindowWithTagCodable() {
+    let win = RuntimeWindow(
+        tmuxWindowId: "@3",
+        worktreeId: UUID(),
+        title: "agent",
+        tag: .agent
+    )
+    let data = try! JSONEncoder().encode(win)
+    let decoded = try! JSONDecoder().decode(RuntimeWindow.self, from: data)
+    assertEqual(decoded.tag, .agent)
+    assertEqual(decoded, win)
+}
+
+func testWindowBadgeLongRunning() {
+    assertEqual(WindowBadge.longRunning.rawValue, "longRunning")
+
+    // Codable round-trip
+    let data = try! JSONEncoder().encode(WindowBadge.longRunning)
+    let decoded = try! JSONDecoder().decode(WindowBadge.self, from: data)
+    assertEqual(decoded, .longRunning)
+}
+
+func testAlertStateFromLongRunningBadge() {
+    assertEqual(StatusAggregator.alertState(from: .longRunning), .warning)
+}
+
+func testWorktreeAlertStateWithLongRunning() {
+    // longRunning maps to .warning, which is above .unread but below .waiting
+    let state = StatusAggregator.worktreeAlertState(windowBadges: [.longRunning, .unread])
+    assertEqual(state, .warning)
+
+    // waiting > longRunning
+    let waitingState = StatusAggregator.worktreeAlertState(windowBadges: [.longRunning, .waiting])
+    assertEqual(waitingState, .waiting)
+}
+
+func testTemplateRegistryTags() {
+    // Basic template tags
+    assertEqual(TemplateRegistry.basic.windows[0].tag, .shell)
+    assertEqual(TemplateRegistry.basic.windows[1].tag, .shell)
+    assertEqual(TemplateRegistry.basic.windows[2].tag, .logs)
+
+    // Go template tags
+    assertEqual(TemplateRegistry.go.windows[0].tag, .editor)
+    assertEqual(TemplateRegistry.go.windows[1].tag, .server)
+    assertEqual(TemplateRegistry.go.windows[2].tag, .tests)
+    assertEqual(TemplateRegistry.go.windows[3].tag, .logs)
+
+    // Agent template tags
+    assertEqual(TemplateRegistry.agent.windows[0].tag, .editor)
+    assertEqual(TemplateRegistry.agent.windows[1].tag, .agent)
+    assertEqual(TemplateRegistry.agent.windows[2].tag, .server)
+    assertEqual(TemplateRegistry.agent.windows[3].tag, .logs)
+}
+
 // MARK: - Main
 
 print("=== MoriCore Model Tests ===")
@@ -499,6 +620,19 @@ testFuzzyMatcherEmptyQuery()
 testFuzzyMatcherCaseInsensitive()
 testFuzzyMatcherCamelCaseBoundary()
 testFuzzyMatcherScoreOrdering()
+
+testWindowTagRawValues()
+testWindowTagCodable()
+testWindowTagSymbolNames()
+testWindowTagInference()
+testWindowTagInferenceCaseInsensitive()
+testRuntimeWindowWithTag()
+testRuntimeWindowTagDefaultNil()
+testRuntimeWindowWithTagCodable()
+testWindowBadgeLongRunning()
+testAlertStateFromLongRunningBadge()
+testWorktreeAlertStateWithLongRunning()
+testTemplateRegistryTags()
 
 printResults()
 
