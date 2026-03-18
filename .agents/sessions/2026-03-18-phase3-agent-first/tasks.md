@@ -24,12 +24,12 @@
 - [x] 3.4 — Tests for enhanced status aggregation
 
 ## Phase 4: Notifications
-- [ ] 4.1 — Create `NotificationDebouncer` in MoriCore (pure transition + debounce logic)
-- [ ] 4.2 — Create `NotificationManager` in app target (UNUserNotificationCenter)
-- [ ] 4.3 — Wire notifications to state transitions in WorkspaceManager
-- [ ] 4.4 — Dock badge for aggregate unread count
-- [ ] 4.5 — Notification click handling (focus window on click)
-- [ ] 4.6 — Tests for NotificationDebouncer
+- [x] 4.1 — Create `NotificationDebouncer` in MoriCore (pure transition + debounce logic)
+- [x] 4.2 — Create `NotificationManager` in app target (UNUserNotificationCenter)
+- [x] 4.3 — Wire notifications to state transitions in WorkspaceManager
+- [x] 4.4 — Dock badge for aggregate unread count
+- [x] 4.5 — Notification click handling (focus window on click)
+- [x] 4.6 — Tests for NotificationDebouncer
 
 ## Phase 5: CLI / IPC Interface
 - [ ] 5.1 — Create MoriIPC SPM package

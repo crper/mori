@@ -104,3 +104,34 @@ Implemented worktree status enhancements (tasks 3.1-3.4) across 4 commits. Runti
 - Worktree `agentState` resets each poll cycle and re-aggregates — no stale state accumulation
 - Sidebar badge icons are SF Symbols — consistent with macOS design language
 - `lastExitCode` is best-effort (only populated for agent-tagged windows via output pattern matching)
+
+## Phase 4: Notifications — COMPLETE
+
+### Summary
+Implemented macOS notifications for badge state transitions (tasks 4.1-4.6) across 6 commits. The app now fires native notifications when windows transition to attention-worthy states and displays an aggregate unread count on the dock badge.
+
+### What was done
+1. **NotificationDebouncer** (`Packages/MoriCore/Sources/MoriCore/Models/NotificationDebouncer.swift`) — Pure-logic struct in MoriCore that detects notification-worthy badge transitions (idle/running->waiting = agentWaiting, any->error = commandError, running/longRunning->idle = longRunningComplete). Suppresses re-fire for same window+event within 30s. Fully testable without UNUserNotificationCenter.
+2. **NotificationManager** (`Sources/Mori/App/NotificationManager.swift`) — UNUserNotificationCenter wrapper. Requests permission on first use. Posts notifications with windowId/worktreeId in userInfo. Sets up notification category for click handling.
+3. **WorkspaceManager wiring** — Stores `previousBadges: [String: WindowBadge]` dictionary and `NotificationDebouncer` instance. After badge updates in `coordinatedPoll`, compares with previous badges and fires notifications for approved transitions.
+4. **Dock badge** — `updateDockBadge()` method computes total unread across all projects via `NSApp.dockTile.badgeLabel`. Called at end of `coordinatedPoll` and `clearUnread`.
+5. **Notification click handling** — AppDelegate conforms to `UNUserNotificationCenterDelegate`. On click, extracts windowId from userInfo, brings app to front via `NSApp.activate`, and calls `selectWindow` to focus the relevant pane. Banners show even when app is in foreground.
+6. **Tests** — 22 new assertions (252 total MoriCore, 469 across all packages). Covers state transitions, debounce suppression within 30s, non-transitions, multiple independent windows, nil old badge handling, NotificationEvent raw values, error->idle non-trigger.
+
+### Files changed
+- `Packages/MoriCore/Sources/MoriCore/Models/NotificationDebouncer.swift` (new)
+- `Packages/MoriCore/Tests/MoriCoreTests/main.swift`
+- `Sources/Mori/App/NotificationManager.swift` (new)
+- `Sources/Mori/App/WorkspaceManager.swift`
+- `Sources/Mori/App/AppDelegate.swift`
+
+### Build status
+- Zero warnings under Swift 6 strict concurrency
+- All 469 test assertions passing (252 core + 175 tmux + 42 persistence)
+
+### Notes for next phase
+- `NotificationDebouncer` is a value type (struct) — mutating methods track state; lives on WorkspaceManager
+- Notification permission is requested lazily on first notification attempt
+- `UNUserNotificationCenterDelegate` is set in `applicationDidFinishLaunching` before any notifications fire
+- Dock badge clears automatically when all unread counts reach zero
+- The `willPresent` delegate method allows banners to display even when the app is in the foreground
