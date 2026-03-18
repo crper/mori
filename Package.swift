@@ -14,6 +14,7 @@ let package = Package(
         .package(path: "Packages/MoriCore"),
         .package(path: "Packages/MoriPersistence"),
         .package(path: "Packages/MoriTmux"),
+        .package(path: "Packages/MoriTerminal"),
         .package(path: "Packages/MoriUI"),
     ],
     targets: [
@@ -23,6 +24,7 @@ let package = Package(
                 "MoriCore",
                 "MoriPersistence",
                 "MoriTmux",
+                "MoriTerminal",
                 "MoriUI",
             ],
             path: "Sources/Mori"
