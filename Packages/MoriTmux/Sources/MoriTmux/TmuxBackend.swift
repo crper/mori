@@ -133,4 +133,30 @@ public actor TmuxBackend: TmuxControlling {
             "kill-session", "-t", id
         )
     }
+
+    public func createWindow(sessionId: String, name: String?, cwd: String?) async throws -> TmuxWindow {
+        var args: [String] = ["new-window", "-t", sessionId, "-P", "-F", TmuxParser.windowFormat]
+        if let name {
+            args.append(contentsOf: ["-n", name])
+        }
+        if let cwd {
+            args.append(contentsOf: ["-c", cwd])
+        }
+        let output = try await runner.run(args)
+        let windows = TmuxParser.parseWindows(output)
+        guard let window = windows.first else {
+            throw TmuxError.executionFailed(
+                command: "new-window",
+                exitCode: -1,
+                stderr: "Failed to parse created window"
+            )
+        }
+        return window
+    }
+
+    public func sendKeys(sessionId: String, paneId: String, keys: String) async throws {
+        _ = try await runner.run(
+            "send-keys", "-t", "\(sessionId):\(paneId)", keys, "Enter"
+        )
+    }
 }
