@@ -44,9 +44,13 @@ run = "cd Packages/MoriTmux && swift run MoriTmuxTests"
 [tasks."test:ipc"]
 run = "cd Packages/MoriIPC && swift run MoriIPCTests"
 
+[tasks.bundle]
+description = "Build release and create Mori.app bundle"
+run = "bash scripts/bundle.sh"
+
 [tasks.clean]
 description = "Clean build artifacts"
-run = "swift package clean && rm -rf .build .derived-data"
+run = "swift package clean && rm -rf .build .derived-data Mori.app"
 
 # ─── Xcode ───────────────────────────────────────────────────────
 
