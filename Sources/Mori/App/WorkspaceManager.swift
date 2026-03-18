@@ -245,7 +245,7 @@ final class WorkspaceManager {
         try projectRepo.save(project)
 
         // Create default worktree
-        let sessionName = SessionNaming.sessionName(project: name, worktree: "main")
+        let sessionName = SessionNaming.sessionName(projectShortName: project.shortName, worktree: "main")
         let worktree = Worktree(
             projectId: project.id,
             name: "main",
@@ -318,7 +318,7 @@ final class WorkspaceManager {
         )
 
         // Step 2: Create Worktree model and save to DB
-        let sessionName = SessionNaming.sessionName(project: project.name, worktree: trimmed)
+        let sessionName = SessionNaming.sessionName(projectShortName: project.shortName, worktree: trimmed)
         let worktree = Worktree(
             projectId: projectId,
             name: trimmed,

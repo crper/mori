@@ -20,16 +20,59 @@ public enum TmuxError: Error, LocalizedError, Sendable {
 
 /// Runs tmux commands via `Process` (Foundation).
 /// Resolves the tmux binary path via PATH lookup with common fallback locations.
+/// Loads the user's login shell environment on first use so that tools installed
+/// via Homebrew, mise, nix, etc. are discoverable even when launched as a .app bundle.
 public actor TmuxCommandRunner {
 
     /// Cached path to the tmux binary, resolved on first use.
     private var resolvedBinaryPath: String?
 
+    /// User's shell environment, loaded once on first use.
+    private var shellEnvironment: [String: String]?
+
     public init() {}
+
+    // MARK: - Shell Environment
+
+    /// Load the user's login shell environment by running `env` inside their default shell.
+    /// This ensures PATH includes Homebrew, mise, nix, and other user-configured paths.
+    private func loadShellEnvironment() async -> [String: String] {
+        if let cached = shellEnvironment {
+            return cached
+        }
+
+        let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+        do {
+            let (output, _, exitCode) = try await runProcess(
+                executablePath: shell,
+                arguments: ["-l", "-c", "env"],
+                environment: nil
+            )
+            if exitCode == 0 {
+                var env: [String: String] = [:]
+                for line in output.split(separator: "\n") {
+                    if let eqIndex = line.firstIndex(of: "=") {
+                        let key = String(line[line.startIndex..<eqIndex])
+                        let value = String(line[line.index(after: eqIndex)...])
+                        env[key] = value
+                    }
+                }
+                shellEnvironment = env
+                return env
+            }
+        } catch {
+            // Fall through to process environment
+        }
+
+        let env = ProcessInfo.processInfo.environment
+        shellEnvironment = env
+        return env
+    }
 
     // MARK: - Binary Resolution
 
-    /// Resolve the tmux binary path. Checks common locations first, then falls back to `which tmux`.
+    /// Resolve the tmux binary path. Checks common locations first,
+    /// then uses the user's shell PATH via login shell env.
     public func resolveBinaryPath() async throws -> String {
         if let cached = resolvedBinaryPath {
             return cached
@@ -47,17 +90,16 @@ public actor TmuxCommandRunner {
             }
         }
 
-        // Fall back to `which tmux`
-        let (output, _, exitCode) = try await runProcess(
-            executablePath: "/usr/bin/which",
-            arguments: ["tmux"]
-        )
-
-        if exitCode == 0 {
-            let path = output.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !path.isEmpty {
-                resolvedBinaryPath = path
-                return path
+        // Load user shell env and search PATH
+        let env = await loadShellEnvironment()
+        if let pathVar = env["PATH"] {
+            let dirs = pathVar.split(separator: ":")
+            for dir in dirs {
+                let candidate = "\(dir)/tmux"
+                if FileManager.default.isExecutableFile(atPath: candidate) {
+                    resolvedBinaryPath = candidate
+                    return candidate
+                }
             }
         }
 
@@ -84,9 +126,11 @@ public actor TmuxCommandRunner {
     /// Run a tmux command with the given arguments array. Returns stdout as a string.
     public func run(_ arguments: [String]) async throws -> String {
         let binaryPath = try await resolveBinaryPath()
+        let env = await loadShellEnvironment()
         let (stdout, stderr, exitCode) = try await runProcess(
             executablePath: binaryPath,
-            arguments: arguments
+            arguments: arguments,
+            environment: env
         )
 
         if exitCode != 0 {
@@ -107,7 +151,8 @@ public actor TmuxCommandRunner {
 
     private func runProcess(
         executablePath: String,
-        arguments: [String]
+        arguments: [String],
+        environment: [String: String]?
     ) async throws -> (output: String, stderr: String, exitCode: Int32) {
         try await withCheckedThrowingContinuation { continuation in
             let process = Process()
@@ -116,6 +161,9 @@ public actor TmuxCommandRunner {
 
             process.executableURL = URL(fileURLWithPath: executablePath)
             process.arguments = arguments
+            if let environment {
+                process.environment = environment
+            }
             process.standardOutput = stdoutPipe
             process.standardError = stderrPipe
 

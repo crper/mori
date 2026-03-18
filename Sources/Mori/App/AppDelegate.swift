@@ -127,6 +127,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         sidebarController.updateAppearance(settings: self.terminalSettings)
 
         let terminalArea = TerminalAreaViewController()
+        terminalArea.onCreateSession = { [weak self] in
+            self?.showAddProjectPanel()
+        }
         self.terminalAreaController = terminalArea
 
         let splitVC = RootSplitViewController(

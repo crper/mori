@@ -1,14 +1,16 @@
 import Foundation
 
-/// Utilities for the Mori tmux session naming convention: `ws__<project-slug>__<worktree-slug>`.
-/// Uses `__` (double underscore) as separator because tmux reserves `:` for session:window notation.
+/// Utilities for the Mori tmux session naming convention: `<project-short-name>/<branch-slug>`.
+/// Uses `/` as separator for human-readable `tmux ls` output.
 public enum SessionNaming {
 
-    /// The prefix used for all Mori-managed tmux sessions.
-    public static let prefix = "ws__"
+    /// The separator between project short name and branch slug.
+    public static let separator = "/"
 
-    /// The separator between project and worktree slugs.
-    public static let separator = "__"
+    /// Common branch prefixes to strip for shorter names.
+    private static let strippablePrefixes = [
+        "feature/", "feat/", "fix/", "bugfix/", "hotfix/", "release/",
+    ]
 
     /// Slugify a string: lowercase, replace non-alphanumeric characters with hyphens,
     /// collapse consecutive hyphens, trim leading/trailing hyphens.
@@ -34,23 +36,36 @@ public enum SessionNaming {
         return result
     }
 
-    /// Build a Mori session name from project and worktree names.
-    public static func sessionName(project: String, worktree: String) -> String {
-        "\(prefix)\(slugify(project))\(separator)\(slugify(worktree))"
+    /// Strip common branch prefixes (feature/, fix/, etc.) for shorter display.
+    public static func stripBranchPrefix(_ branch: String) -> String {
+        let lower = branch.lowercased()
+        for prefix in strippablePrefixes {
+            if lower.hasPrefix(prefix) {
+                return String(branch.dropFirst(prefix.count))
+            }
+        }
+        return branch
     }
 
-    /// Check if a session name matches the Mori naming convention.
+    /// Build a Mori session name from project short name and branch name.
+    /// Format: `<shortName>/<branchSlug>` (e.g. `mori/main`, `api/auth-flow`).
+    public static func sessionName(projectShortName: String, worktree: String) -> String {
+        let branch = stripBranchPrefix(worktree)
+        return "\(projectShortName)\(separator)\(slugify(branch))"
+    }
+
+    /// Check if a session name matches the Mori naming convention (contains `/`).
     public static func isMoriSession(_ name: String) -> Bool {
-        name.hasPrefix(prefix)
+        name.contains(separator) && parse(name) != nil
     }
 
-    /// Parse a Mori session name into (projectSlug, worktreeSlug).
+    /// Parse a Mori session name into (projectShortName, branchSlug).
     /// Returns nil if the name doesn't match the convention.
-    public static func parse(_ name: String) -> (projectSlug: String, worktreeSlug: String)? {
-        guard isMoriSession(name) else { return nil }
-        let withoutPrefix = String(name.dropFirst(prefix.count))
-        let parts = withoutPrefix.split(separator: Substring(separator), maxSplits: 1, omittingEmptySubsequences: false)
-        guard parts.count == 2 else { return nil }
-        return (projectSlug: String(parts[0]), worktreeSlug: String(parts[1]))
+    public static func parse(_ name: String) -> (projectShortName: String, branchSlug: String)? {
+        guard let slashIndex = name.firstIndex(of: "/") else { return nil }
+        let project = String(name[name.startIndex..<slashIndex])
+        let branch = String(name[name.index(after: slashIndex)...])
+        guard !project.isEmpty, !branch.isEmpty else { return nil }
+        return (projectShortName: project, branchSlug: branch)
     }
 }

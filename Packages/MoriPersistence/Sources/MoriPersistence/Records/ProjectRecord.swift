@@ -8,6 +8,7 @@ public struct ProjectRecord: Codable, FetchableRecord, PersistableRecord, Sendab
 
     public var id: String
     public var name: String
+    public var shortName: String
     public var repoRootPath: String
     public var gitCommonDir: String
     public var originURL: String?
@@ -21,6 +22,7 @@ public struct ProjectRecord: Codable, FetchableRecord, PersistableRecord, Sendab
     public init(from project: Project) {
         self.id = project.id.uuidString
         self.name = project.name
+        self.shortName = project.shortName
         self.repoRootPath = project.repoRootPath
         self.gitCommonDir = project.gitCommonDir
         self.originURL = project.originURL
@@ -40,6 +42,7 @@ public struct ProjectRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         return Project(
             id: uuid,
             name: name,
+            shortName: shortName,
             repoRootPath: repoRootPath,
             gitCommonDir: gitCommonDir,
             originURL: originURL,

@@ -24,18 +24,18 @@ public struct TmuxSession: Identifiable, Equatable, Sendable {
         self.windows = windows
     }
 
-    /// Whether this session follows the Mori naming convention `ws__<project>__<worktree>`.
+    /// Whether this session follows the Mori naming convention `<project>/<branch>`.
     public var isMoriSession: Bool {
-        name.hasPrefix(SessionNaming.prefix)
+        SessionNaming.isMoriSession(name)
     }
 
-    /// Extract the project slug from a Mori session name.
-    public var projectSlug: String? {
-        SessionNaming.parse(name)?.projectSlug
+    /// Extract the project short name from a Mori session name.
+    public var projectShortName: String? {
+        SessionNaming.parse(name)?.projectShortName
     }
 
-    /// Extract the worktree slug from a Mori session name.
-    public var worktreeSlug: String? {
-        SessionNaming.parse(name)?.worktreeSlug
+    /// Extract the branch slug from a Mori session name.
+    public var branchSlug: String? {
+        SessionNaming.parse(name)?.branchSlug
     }
 }

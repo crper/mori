@@ -18,6 +18,10 @@ final class TerminalAreaViewController: NSViewController {
 
     private var currentSessionName: String?
     private var currentSurface: NSView?
+    private var emptyStateView: NSView?
+
+    /// Callback invoked when the user clicks the "New Session" button in the empty state.
+    var onCreateSession: (() -> Void)?
 
     // MARK: - Init
 
@@ -41,6 +45,7 @@ final class TerminalAreaViewController: NSViewController {
         let bgHex = terminalHost.settings.theme.background
         container.layer?.backgroundColor = NSColor(hex: bgHex).cgColor
         self.view = container
+        showEmptyState()
     }
 
     override func viewDidLayout() {
@@ -55,7 +60,7 @@ final class TerminalAreaViewController: NSViewController {
 
     /// Attach to a tmux session. Creates or reuses a cached terminal surface.
     /// - Parameters:
-    ///   - sessionName: The tmux session name (e.g., "ws__my-project__main")
+    ///   - sessionName: The tmux session name (e.g., "mori/main")
     ///   - workingDirectory: The worktree path for the terminal's CWD
     func attachToSession(sessionName: String, workingDirectory: String) {
         // Skip if already showing this session
@@ -63,6 +68,8 @@ final class TerminalAreaViewController: NSViewController {
             focusCurrentSurface()
             return
         }
+
+        hideEmptyState()
 
         // Remove current surface from view (but keep in cache)
         if let oldSurface = currentSurface {
@@ -110,6 +117,7 @@ final class TerminalAreaViewController: NSViewController {
         currentSurface?.removeFromSuperview()
         currentSurface = nil
         currentSessionName = nil
+        showEmptyState()
     }
 
     /// Focus the current terminal surface as first responder.
@@ -131,6 +139,76 @@ final class TerminalAreaViewController: NSViewController {
 
         // Update container background to match theme
         view.layer?.backgroundColor = NSColor(hex: settings.theme.background).cgColor
+    }
+
+    // MARK: - Empty State
+
+    private func showEmptyState() {
+        guard emptyStateView == nil else { return }
+
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        let icon = NSImageView()
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        icon.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "Terminal")
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 40, weight: .thin)
+        icon.contentTintColor = .tertiaryLabelColor
+
+        let label = NSTextField(labelWithString: "No active session")
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = .systemFont(ofSize: 16, weight: .medium)
+        label.textColor = .secondaryLabelColor
+        label.alignment = .center
+
+        let subtitle = NSTextField(labelWithString: "Select a worktree or add a project to get started")
+        subtitle.translatesAutoresizingMaskIntoConstraints = false
+        subtitle.font = .systemFont(ofSize: 12)
+        subtitle.textColor = .tertiaryLabelColor
+        subtitle.alignment = .center
+
+        let button = NSButton(title: "Add Project...", target: self, action: #selector(emptyStateButtonClicked))
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.bezelStyle = .rounded
+        button.controlSize = .large
+
+        container.addSubview(icon)
+        container.addSubview(label)
+        container.addSubview(subtitle)
+        container.addSubview(button)
+
+        NSLayoutConstraint.activate([
+            icon.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            icon.bottomAnchor.constraint(equalTo: label.topAnchor, constant: -12),
+
+            label.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: container.centerYAnchor, constant: -16),
+
+            subtitle.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            subtitle.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 4),
+
+            button.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            button.topAnchor.constraint(equalTo: subtitle.bottomAnchor, constant: 16),
+        ])
+
+        view.addSubview(container)
+        NSLayoutConstraint.activate([
+            container.topAnchor.constraint(equalTo: view.topAnchor),
+            container.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            container.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            container.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        ])
+
+        emptyStateView = container
+    }
+
+    private func hideEmptyState() {
+        emptyStateView?.removeFromSuperview()
+        emptyStateView = nil
+    }
+
+    @objc private func emptyStateButtonClicked() {
+        onCreateSession?()
     }
 
     // MARK: - Helpers

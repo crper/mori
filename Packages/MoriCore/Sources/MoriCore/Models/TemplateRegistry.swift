@@ -3,13 +3,11 @@ import Foundation
 /// Built-in session templates for common development workflows.
 public enum TemplateRegistry {
 
-    /// Basic template: shell, run, logs.
+    /// Basic template: single shell window.
     public static let basic = SessionTemplate(
         name: "basic",
         windows: [
             WindowTemplate(name: "shell", tag: .shell),
-            WindowTemplate(name: "run", tag: .shell),
-            WindowTemplate(name: "logs", tag: .logs),
         ]
     )
 

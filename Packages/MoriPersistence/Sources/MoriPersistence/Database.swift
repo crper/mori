@@ -90,6 +90,14 @@ public struct AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("v2_addProjectShortName") { db in
+            try db.alter(table: "project") { t in
+                t.add(column: "shortName", .text).notNull().defaults(to: "")
+            }
+            // Backfill: set shortName to lowercased name (truncated to 8) for existing rows
+            try db.execute(sql: "UPDATE project SET shortName = LOWER(SUBSTR(name, 1, 8)) WHERE shortName = ''")
+        }
+
         return migrator
     }
 }

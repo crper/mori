@@ -16,7 +16,7 @@ func testParseSessionsSingle() {
 func testParseSessionsMultiple() {
     let output = """
     $0\tdev\t2\t1
-    $1\tws__mori__main\t1\t0
+    $1\tmori/main\t1\t0
     $2\tbackground\t4\t0
     """
     let sessions = TmuxParser.parseSessions(output)
@@ -28,7 +28,7 @@ func testParseSessionsMultiple() {
     assertTrue(sessions[0].isAttached)
 
     assertEqual(sessions[1].sessionId, "$1")
-    assertEqual(sessions[1].name, "ws__mori__main")
+    assertEqual(sessions[1].name, "mori/main")
     assertEqual(sessions[1].windowCount, 1)
     assertFalse(sessions[1].isAttached)
 
@@ -192,38 +192,53 @@ func testSlugifyUnicode() {
 
 func testSessionNameGeneration() {
     assertEqual(
-        SessionNaming.sessionName(project: "Mori", worktree: "main"),
-        "ws__mori__main"
+        SessionNaming.sessionName(projectShortName: "mori", worktree: "main"),
+        "mori/main"
     )
     assertEqual(
-        SessionNaming.sessionName(project: "My Project", worktree: "feat/sidebar"),
-        "ws__my-project__feat-sidebar"
+        SessionNaming.sessionName(projectShortName: "mp", worktree: "feat/sidebar"),
+        "mp/sidebar"
     )
+    assertEqual(
+        SessionNaming.sessionName(projectShortName: "api", worktree: "feature/auth-flow"),
+        "api/auth-flow"
+    )
+}
+
+func testStripBranchPrefix() {
+    assertEqual(SessionNaming.stripBranchPrefix("feature/auth"), "auth")
+    assertEqual(SessionNaming.stripBranchPrefix("feat/sidebar"), "sidebar")
+    assertEqual(SessionNaming.stripBranchPrefix("fix/crash"), "crash")
+    assertEqual(SessionNaming.stripBranchPrefix("hotfix/urgent"), "urgent")
+    assertEqual(SessionNaming.stripBranchPrefix("release/2.0"), "2.0")
+    assertEqual(SessionNaming.stripBranchPrefix("main"), "main")
+    assertEqual(SessionNaming.stripBranchPrefix("my-branch"), "my-branch")
 }
 
 func testSessionNameParsing() {
-    let result = SessionNaming.parse("ws__mori__main")
+    let result = SessionNaming.parse("mori/main")
     assertNotNil(result)
-    assertEqual(result?.projectSlug, "mori")
-    assertEqual(result?.worktreeSlug, "main")
+    assertEqual(result?.projectShortName, "mori")
+    assertEqual(result?.branchSlug, "main")
 }
 
 func testSessionNameParsingComplex() {
-    let result = SessionNaming.parse("ws__my-project__feat-sidebar")
+    let result = SessionNaming.parse("mp/sidebar-v2")
     assertNotNil(result)
-    assertEqual(result?.projectSlug, "my-project")
-    assertEqual(result?.worktreeSlug, "feat-sidebar")
+    assertEqual(result?.projectShortName, "mp")
+    assertEqual(result?.branchSlug, "sidebar-v2")
 }
 
 func testSessionNameParsingInvalid() {
     assertNil(SessionNaming.parse("regular-session"))
-    assertNil(SessionNaming.parse("ws__only-one-part"))
+    assertNil(SessionNaming.parse("/no-project"))
+    assertNil(SessionNaming.parse("no-branch/"))
     assertNil(SessionNaming.parse(""))
 }
 
 func testIsMoriSession() {
-    assertTrue(SessionNaming.isMoriSession("ws__mori__main"))
-    assertTrue(SessionNaming.isMoriSession("ws__a__b"))
+    assertTrue(SessionNaming.isMoriSession("mori/main"))
+    assertTrue(SessionNaming.isMoriSession("a/b"))
     assertFalse(SessionNaming.isMoriSession("dev"))
     assertFalse(SessionNaming.isMoriSession(""))
 }
@@ -231,15 +246,15 @@ func testIsMoriSession() {
 // MARK: - TmuxSession Model Tests
 
 func testTmuxSessionMoriDetection() {
-    let moriSession = TmuxSession(sessionId: "$0", name: "ws__mori__main")
+    let moriSession = TmuxSession(sessionId: "$0", name: "mori/main")
     assertTrue(moriSession.isMoriSession)
-    assertEqual(moriSession.projectSlug, "mori")
-    assertEqual(moriSession.worktreeSlug, "main")
+    assertEqual(moriSession.projectShortName, "mori")
+    assertEqual(moriSession.branchSlug, "main")
 
     let regularSession = TmuxSession(sessionId: "$1", name: "dev")
     assertFalse(regularSession.isMoriSession)
-    assertNil(regularSession.projectSlug)
-    assertNil(regularSession.worktreeSlug)
+    assertNil(regularSession.projectShortName)
+    assertNil(regularSession.branchSlug)
 }
 
 // MARK: - Format String Tests
@@ -503,6 +518,7 @@ testSlugifySimple()
 testSlugifySpecialChars()
 testSlugifyUnicode()
 testSessionNameGeneration()
+testStripBranchPrefix()
 testSessionNameParsing()
 testSessionNameParsingComplex()
 testSessionNameParsingInvalid()

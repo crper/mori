@@ -811,10 +811,9 @@ func testWorktreeAggregationWithGitAndRunning() {
 }
 
 func testTemplateRegistryTags() {
-    // Basic template tags
+    // Basic template tags (single shell window)
+    assertEqual(TemplateRegistry.basic.windows.count, 1)
     assertEqual(TemplateRegistry.basic.windows[0].tag, .shell)
-    assertEqual(TemplateRegistry.basic.windows[1].tag, .shell)
-    assertEqual(TemplateRegistry.basic.windows[2].tag, .logs)
 
     // Go template tags
     assertEqual(TemplateRegistry.go.windows[0].tag, .editor)
