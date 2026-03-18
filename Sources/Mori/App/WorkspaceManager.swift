@@ -556,6 +556,9 @@ final class WorkspaceManager {
             )
 
             updateRuntimeState(from: sessions, unreadWindowIds: unreadWindowIds)
+
+            // Detect agent state for agent-tagged windows
+            await detectAgentStates(sessions: sessions)
         }
 
         // Update worktree fields from git status
@@ -613,6 +616,123 @@ final class WorkspaceManager {
         }
 
         appState.runtimeWindows = runtimeWindows
+    }
+
+    // MARK: - Agent State Detection
+
+    /// Detect agent state for agent-tagged windows and update badges.
+    /// For non-agent windows, derive running/idle from pane currentCommand.
+    private func detectAgentStates(sessions: [TmuxSession]) async {
+        let now = Date().timeIntervalSince1970
+
+        for i in appState.runtimeWindows.indices {
+            let rw = appState.runtimeWindows[i]
+
+            // Find the matching tmux window across sessions
+            guard let (_, tmuxWindow) = findTmuxWindow(
+                windowId: rw.tmuxWindowId,
+                in: sessions
+            ) else { continue }
+
+            // Get the active pane (or first pane as fallback)
+            guard let activePane = tmuxWindow.panes.first(where: { $0.isActive })
+                    ?? tmuxWindow.panes.first else { continue }
+
+            if rw.tag == .agent {
+                // Agent-tagged window: capture output and run full detection
+                do {
+                    let captured = try await tmuxBackend.capturePaneOutput(
+                        paneId: activePane.paneId,
+                        lineCount: 20
+                    )
+                    let paneState = PaneStateDetector.detect(
+                        pane: activePane,
+                        capturedOutput: captured,
+                        now: now
+                    )
+
+                    // Map DetectedAgentState -> MoriCore AgentState
+                    let agentState = mapAgentState(paneState.detectedAgentState)
+
+                    // Update window badge using richer derivation
+                    let badge = StatusAggregator.windowBadge(
+                        hasUnreadOutput: rw.hasUnreadOutput,
+                        isRunning: paneState.isRunning,
+                        isLongRunning: paneState.isLongRunning,
+                        agentState: agentState
+                    )
+                    appState.runtimeWindows[i].badge = badge
+
+                    // Update parent worktree's agentState (highest priority wins)
+                    updateWorktreeAgentState(
+                        worktreeId: rw.worktreeId,
+                        agentState: agentState
+                    )
+                } catch {
+                    // capture-pane failure is non-fatal; keep existing badge
+                }
+            } else {
+                // Non-agent window: derive running/idle from pane command
+                let isShell = PaneStateDetector.isShellProcess(activePane.currentCommand)
+                let isRunning = !isShell && activePane.currentCommand != nil
+                let isLongRunning = isRunning
+                    && activePane.startTime.map({ now - $0 > PaneStateDetector.longRunningThreshold }) ?? false
+
+                let badge = StatusAggregator.windowBadge(
+                    hasUnreadOutput: rw.hasUnreadOutput,
+                    isRunning: isRunning,
+                    isLongRunning: isLongRunning,
+                    agentState: .none
+                )
+                appState.runtimeWindows[i].badge = badge
+            }
+        }
+    }
+
+    /// Find a tmux window by ID across all sessions.
+    private func findTmuxWindow(
+        windowId: String,
+        in sessions: [TmuxSession]
+    ) -> (TmuxSession, TmuxWindow)? {
+        for session in sessions {
+            if let window = session.windows.first(where: { $0.windowId == windowId }) {
+                return (session, window)
+            }
+        }
+        return nil
+    }
+
+    /// Map MoriTmux DetectedAgentState to MoriCore AgentState.
+    private func mapAgentState(_ detected: DetectedAgentState) -> AgentState {
+        switch detected {
+        case .none: return .none
+        case .running: return .running
+        case .waitingForInput: return .waitingForInput
+        case .error: return .error
+        case .completed: return .completed
+        }
+    }
+
+    /// Update a worktree's agentState to the highest-priority agent state
+    /// across all its agent-tagged windows.
+    private func updateWorktreeAgentState(worktreeId: UUID, agentState: AgentState) {
+        guard let index = appState.worktrees.firstIndex(where: { $0.id == worktreeId }) else { return }
+        // Only upgrade — don't downgrade if another agent window has higher priority
+        let current = appState.worktrees[index].agentState
+        if agentStatePriority(agentState) > agentStatePriority(current) {
+            appState.worktrees[index].agentState = agentState
+        }
+    }
+
+    /// Priority ordering for agent states.
+    private func agentStatePriority(_ state: AgentState) -> Int {
+        switch state {
+        case .none: return 0
+        case .completed: return 1
+        case .running: return 2
+        case .waitingForInput: return 3
+        case .error: return 4
+        }
     }
 
     /// Roll up unread window counts to worktree.unreadCount.

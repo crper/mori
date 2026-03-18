@@ -48,7 +48,7 @@ public enum PaneStateDetector {
     // MARK: - Private
 
     /// Check if the command is a shell process (idle pane).
-    static func isShellProcess(_ command: String?) -> Bool {
+    public static func isShellProcess(_ command: String?) -> Bool {
         guard let command, !command.isEmpty else { return true }
         return shellCommands.contains(command)
     }
