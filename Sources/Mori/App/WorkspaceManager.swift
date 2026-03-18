@@ -37,6 +37,7 @@ final class WorkspaceManager {
     let gitBackend: GitBackend
     let gitStatusCoordinator: GitStatusCoordinator
     let unreadTracker: UnreadTracker
+    let notificationManager: NotificationManager
 
     /// Callback invoked when the terminal should switch to a different session.
     /// Parameters: (sessionName, workingDirectory)
@@ -51,6 +52,12 @@ final class WorkspaceManager {
     /// Cache of the latest tmux sessions from the most recent poll.
     /// Used by selectWindow to look up current pane activity timestamps.
     private var latestSessions: [TmuxSession] = []
+
+    /// Previous badge state per window ID — used to detect transitions for notifications.
+    private var previousBadges: [String: WindowBadge] = [:]
+
+    /// Debouncer for notification transitions — suppresses re-fire within 30s.
+    private var notificationDebouncer = NotificationDebouncer()
 
     init(
         appState: AppState,
@@ -68,6 +75,7 @@ final class WorkspaceManager {
         self.gitBackend = gitBackend
         self.gitStatusCoordinator = GitStatusCoordinator(gitBackend: gitBackend)
         self.unreadTracker = UnreadTracker()
+        self.notificationManager = NotificationManager()
     }
 
     /// Whether tmux is available on this system.
@@ -567,6 +575,9 @@ final class WorkspaceManager {
         // Roll up unread counts and aggregate badges
         updateUnreadCounts()
         updateAggregatedBadges()
+
+        // Check for notification-worthy badge transitions
+        checkNotifications()
     }
 
     /// Update runtime windows from tmux session data.
@@ -830,6 +841,39 @@ final class WorkspaceManager {
                 appState.projects[i].aggregateUnreadCount = newUnreadCount
                 try? projectRepo.save(appState.projects[i])
             }
+        }
+    }
+
+    // MARK: - Notifications
+
+    /// Compare current window badges with previous poll cycle and fire notifications
+    /// for approved transitions via NotificationDebouncer.
+    private func checkNotifications() {
+        let now = Date()
+        for rw in appState.runtimeWindows {
+            let oldBadge = previousBadges[rw.tmuxWindowId]
+            let newBadge = rw.badge ?? .idle
+
+            if let event = notificationDebouncer.shouldNotify(
+                windowId: rw.tmuxWindowId,
+                oldBadge: oldBadge,
+                newBadge: newBadge,
+                now: now
+            ) {
+                // Find parent worktree name
+                let worktreeName = appState.worktrees
+                    .first(where: { $0.id == rw.worktreeId })?.name ?? "Unknown"
+
+                notificationManager.notify(
+                    event,
+                    windowTitle: rw.title,
+                    worktreeName: worktreeName,
+                    windowId: rw.tmuxWindowId,
+                    worktreeId: rw.worktreeId.uuidString
+                )
+            }
+
+            previousBadges[rw.tmuxWindowId] = newBadge
         }
     }
 
