@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 @Observable
 public final class AppState {
     public var projects: [Project] = []
