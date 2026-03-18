@@ -960,6 +960,170 @@ func testDebouncerErrorToIdle() {
     assertNil(result)
 }
 
+// MARK: - HookConfig Tests
+
+func testHookEventRawValues() {
+    assertEqual(HookEvent.onWorktreeCreate.rawValue, "onWorktreeCreate")
+    assertEqual(HookEvent.onWorktreeFocus.rawValue, "onWorktreeFocus")
+    assertEqual(HookEvent.onWorktreeClose.rawValue, "onWorktreeClose")
+    assertEqual(HookEvent.onWindowCreate.rawValue, "onWindowCreate")
+    assertEqual(HookEvent.onWindowFocus.rawValue, "onWindowFocus")
+    assertEqual(HookEvent.onWindowClose.rawValue, "onWindowClose")
+}
+
+func testHookEventCodable() {
+    for event: HookEvent in [
+        .onWorktreeCreate, .onWorktreeFocus, .onWorktreeClose,
+        .onWindowCreate, .onWindowFocus, .onWindowClose
+    ] {
+        let data = try! JSONEncoder().encode(event)
+        let decoded = try! JSONDecoder().decode(HookEvent.self, from: data)
+        assertEqual(decoded, event)
+    }
+}
+
+func testHookActionWithShell() {
+    let action = HookAction(shell: "echo hello")
+    assertEqual(action.shell, "echo hello")
+    assertNil(action.tmuxSend)
+
+    let data = try! JSONEncoder().encode(action)
+    let decoded = try! JSONDecoder().decode(HookAction.self, from: data)
+    assertEqual(decoded, action)
+}
+
+func testHookActionWithTmuxSend() {
+    let action = HookAction(tmuxSend: "ls -la")
+    assertNil(action.shell)
+    assertEqual(action.tmuxSend, "ls -la")
+
+    let data = try! JSONEncoder().encode(action)
+    let decoded = try! JSONDecoder().decode(HookAction.self, from: data)
+    assertEqual(decoded, action)
+}
+
+func testHookActionWithBoth() {
+    let action = HookAction(shell: "echo hi", tmuxSend: "pwd")
+    assertEqual(action.shell, "echo hi")
+    assertEqual(action.tmuxSend, "pwd")
+}
+
+func testHookEntryEncodeDecode() {
+    let entry = HookEntry(
+        event: .onWorktreeCreate,
+        actions: [HookAction(shell: "git fetch")]
+    )
+    let data = try! JSONEncoder().encode(entry)
+    let decoded = try! JSONDecoder().decode(HookEntry.self, from: data)
+    assertEqual(decoded, entry)
+    assertEqual(decoded.event, .onWorktreeCreate)
+    assertEqual(decoded.actions.count, 1)
+    assertEqual(decoded.actions[0].shell, "git fetch")
+}
+
+func testHookConfigFullJsonDecode() {
+    let json = """
+    {
+        "hooks": [
+            {
+                "event": "onWorktreeCreate",
+                "actions": [
+                    {"shell": "echo created"},
+                    {"tmuxSend": "ls"}
+                ]
+            },
+            {
+                "event": "onWindowFocus",
+                "actions": [
+                    {"shell": "date >> /tmp/focus.log"}
+                ]
+            }
+        ]
+    }
+    """.data(using: .utf8)!
+
+    let config = try! JSONDecoder().decode(HookConfig.self, from: json)
+    assertEqual(config.hooks.count, 2)
+    assertEqual(config.hooks[0].event, .onWorktreeCreate)
+    assertEqual(config.hooks[0].actions.count, 2)
+    assertEqual(config.hooks[0].actions[0].shell, "echo created")
+    assertEqual(config.hooks[0].actions[1].tmuxSend, "ls")
+    assertEqual(config.hooks[1].event, .onWindowFocus)
+    assertEqual(config.hooks[1].actions.count, 1)
+}
+
+func testHookConfigActionsForEvent() {
+    let config = HookConfig(hooks: [
+        HookEntry(event: .onWorktreeCreate, actions: [
+            HookAction(shell: "echo a"),
+            HookAction(tmuxSend: "b"),
+        ]),
+        HookEntry(event: .onWindowFocus, actions: [
+            HookAction(shell: "echo c"),
+        ]),
+        HookEntry(event: .onWorktreeCreate, actions: [
+            HookAction(shell: "echo d"),
+        ]),
+    ])
+
+    // Should collect actions from all matching entries
+    let createActions = config.actions(for: .onWorktreeCreate)
+    assertEqual(createActions.count, 3)
+    assertEqual(createActions[0].shell, "echo a")
+    assertEqual(createActions[1].tmuxSend, "b")
+    assertEqual(createActions[2].shell, "echo d")
+
+    let focusActions = config.actions(for: .onWindowFocus)
+    assertEqual(focusActions.count, 1)
+    assertEqual(focusActions[0].shell, "echo c")
+
+    // No matching event -> empty
+    let closeActions = config.actions(for: .onWindowClose)
+    assertEqual(closeActions.count, 0)
+}
+
+func testHookConfigEmptyHooks() {
+    let config = HookConfig()
+    assertEqual(config.hooks.count, 0)
+    assertEqual(config.actions(for: .onWorktreeCreate).count, 0)
+}
+
+func testHookConfigEmptyJsonDecode() {
+    let json = """
+    {"hooks": []}
+    """.data(using: .utf8)!
+
+    let config = try! JSONDecoder().decode(HookConfig.self, from: json)
+    assertEqual(config.hooks.count, 0)
+}
+
+func testHookConfigInvalidJsonReturnsNil() {
+    // Invalid JSON should fail to decode (caller handles gracefully)
+    let invalid = "not json".data(using: .utf8)!
+    let result = try? JSONDecoder().decode(HookConfig.self, from: invalid)
+    assertNil(result)
+}
+
+func testHookConfigMissingFieldsFails() {
+    // Missing "hooks" key
+    let json = """
+    {"events": []}
+    """.data(using: .utf8)!
+    let result = try? JSONDecoder().decode(HookConfig.self, from: json)
+    assertNil(result)
+}
+
+func testHookEntryMatchByEvent() {
+    let entries = [
+        HookEntry(event: .onWorktreeCreate, actions: [HookAction(shell: "a")]),
+        HookEntry(event: .onWindowClose, actions: [HookAction(shell: "b")]),
+        HookEntry(event: .onWorktreeFocus, actions: [HookAction(shell: "c")]),
+    ]
+    let matched = entries.filter { $0.event == .onWindowClose }
+    assertEqual(matched.count, 1)
+    assertEqual(matched[0].actions[0].shell, "b")
+}
+
 // MARK: - Main
 
 print("=== MoriCore Model Tests ===")
@@ -1046,6 +1210,20 @@ testDebouncerMultipleWindowsIndependent()
 testDebouncerNilOldBadgeTreatedAsIdle()
 testNotificationEventRawValues()
 testDebouncerErrorToIdle()
+
+testHookEventRawValues()
+testHookEventCodable()
+testHookActionWithShell()
+testHookActionWithTmuxSend()
+testHookActionWithBoth()
+testHookEntryEncodeDecode()
+testHookConfigFullJsonDecode()
+testHookConfigActionsForEvent()
+testHookConfigEmptyHooks()
+testHookConfigEmptyJsonDecode()
+testHookConfigInvalidJsonReturnsNil()
+testHookConfigMissingFieldsFails()
+testHookEntryMatchByEvent()
 
 printResults()
 
