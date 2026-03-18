@@ -1,10 +1,14 @@
 import Foundation
 
-/// Utilities for the Mori tmux session naming convention: `ws::<project-slug>::<worktree-slug>`.
+/// Utilities for the Mori tmux session naming convention: `ws__<project-slug>__<worktree-slug>`.
+/// Uses `__` (double underscore) as separator because tmux reserves `:` for session:window notation.
 public enum SessionNaming {
 
     /// The prefix used for all Mori-managed tmux sessions.
-    public static let prefix = "ws::"
+    public static let prefix = "ws__"
+
+    /// The separator between project and worktree slugs.
+    public static let separator = "__"
 
     /// Slugify a string: lowercase, replace non-alphanumeric characters with hyphens,
     /// collapse consecutive hyphens, trim leading/trailing hyphens.
@@ -32,7 +36,7 @@ public enum SessionNaming {
 
     /// Build a Mori session name from project and worktree names.
     public static func sessionName(project: String, worktree: String) -> String {
-        "\(prefix)\(slugify(project))::\(slugify(worktree))"
+        "\(prefix)\(slugify(project))\(separator)\(slugify(worktree))"
     }
 
     /// Check if a session name matches the Mori naming convention.
@@ -45,7 +49,7 @@ public enum SessionNaming {
     public static func parse(_ name: String) -> (projectSlug: String, worktreeSlug: String)? {
         guard isMoriSession(name) else { return nil }
         let withoutPrefix = String(name.dropFirst(prefix.count))
-        let parts = withoutPrefix.split(separator: "::", maxSplits: 1, omittingEmptySubsequences: false)
+        let parts = withoutPrefix.split(separator: Substring(separator), maxSplits: 1, omittingEmptySubsequences: false)
         guard parts.count == 2 else { return nil }
         return (projectSlug: String(parts[0]), worktreeSlug: String(parts[1]))
     }

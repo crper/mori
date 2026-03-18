@@ -16,7 +16,7 @@ func testParseSessionsSingle() {
 func testParseSessionsMultiple() {
     let output = """
     $0\tdev\t2\t1
-    $1\tws::mori::main\t1\t0
+    $1\tws__mori__main\t1\t0
     $2\tbackground\t4\t0
     """
     let sessions = TmuxParser.parseSessions(output)
@@ -28,7 +28,7 @@ func testParseSessionsMultiple() {
     assertTrue(sessions[0].isAttached)
 
     assertEqual(sessions[1].sessionId, "$1")
-    assertEqual(sessions[1].name, "ws::mori::main")
+    assertEqual(sessions[1].name, "ws__mori__main")
     assertEqual(sessions[1].windowCount, 1)
     assertFalse(sessions[1].isAttached)
 
@@ -193,23 +193,23 @@ func testSlugifyUnicode() {
 func testSessionNameGeneration() {
     assertEqual(
         SessionNaming.sessionName(project: "Mori", worktree: "main"),
-        "ws::mori::main"
+        "ws__mori__main"
     )
     assertEqual(
         SessionNaming.sessionName(project: "My Project", worktree: "feat/sidebar"),
-        "ws::my-project::feat-sidebar"
+        "ws__my-project__feat-sidebar"
     )
 }
 
 func testSessionNameParsing() {
-    let result = SessionNaming.parse("ws::mori::main")
+    let result = SessionNaming.parse("ws__mori__main")
     assertNotNil(result)
     assertEqual(result?.projectSlug, "mori")
     assertEqual(result?.worktreeSlug, "main")
 }
 
 func testSessionNameParsingComplex() {
-    let result = SessionNaming.parse("ws::my-project::feat-sidebar")
+    let result = SessionNaming.parse("ws__my-project__feat-sidebar")
     assertNotNil(result)
     assertEqual(result?.projectSlug, "my-project")
     assertEqual(result?.worktreeSlug, "feat-sidebar")
@@ -217,13 +217,13 @@ func testSessionNameParsingComplex() {
 
 func testSessionNameParsingInvalid() {
     assertNil(SessionNaming.parse("regular-session"))
-    assertNil(SessionNaming.parse("ws::only-one-part"))
+    assertNil(SessionNaming.parse("ws__only-one-part"))
     assertNil(SessionNaming.parse(""))
 }
 
 func testIsMoriSession() {
-    assertTrue(SessionNaming.isMoriSession("ws::mori::main"))
-    assertTrue(SessionNaming.isMoriSession("ws::a::b"))
+    assertTrue(SessionNaming.isMoriSession("ws__mori__main"))
+    assertTrue(SessionNaming.isMoriSession("ws__a__b"))
     assertFalse(SessionNaming.isMoriSession("dev"))
     assertFalse(SessionNaming.isMoriSession(""))
 }
@@ -231,7 +231,7 @@ func testIsMoriSession() {
 // MARK: - TmuxSession Model Tests
 
 func testTmuxSessionMoriDetection() {
-    let moriSession = TmuxSession(sessionId: "$0", name: "ws::mori::main")
+    let moriSession = TmuxSession(sessionId: "$0", name: "ws__mori__main")
     assertTrue(moriSession.isMoriSession)
     assertEqual(moriSession.projectSlug, "mori")
     assertEqual(moriSession.worktreeSlug, "main")

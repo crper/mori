@@ -53,7 +53,7 @@ final class TerminalAreaViewController: NSViewController {
 
     /// Attach to a tmux session. Creates or reuses a cached terminal surface.
     /// - Parameters:
-    ///   - sessionName: The tmux session name (e.g., "ws::my-project::main")
+    ///   - sessionName: The tmux session name (e.g., "ws__my-project__main")
     ///   - workingDirectory: The worktree path for the terminal's CWD
     func attachToSession(sessionName: String, workingDirectory: String) {
         // Skip if already showing this session

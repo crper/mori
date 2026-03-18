@@ -60,7 +60,7 @@ NSSplitViewController (3 columns)
 
 ### Key Mapping: Worktree → tmux
 
-Each worktree binds to exactly one tmux session named `ws::<project-slug>::<worktree-slug>`. The terminal surface runs `tmux attach-session -t <name>`. An LRU cache (max 3) keeps recently-used surfaces alive to avoid recreate latency on switch.
+Each worktree binds to exactly one tmux session named `ws__<project-slug>__<worktree-slug>`. The terminal surface runs `tmux attach-session -t <name>`. An LRU cache (max 3) keeps recently-used surfaces alive to avoid recreate latency on switch.
 
 ### Terminal Rendering
 
@@ -76,5 +76,5 @@ GRDB.swift with SQLite (WAL mode) at `~/Library/Application Support/Mori/mori.sq
 - **macOS 14+ (Sonoma)**: Required for `@Observable` macro.
 - **AppKit-first**: Terminal embedding and window management use AppKit. SwiftUI is only for sidebar list views.
 - **SwiftUI views are pure**: They take data + callbacks as parameters (no direct AppState dependency). Hosting controllers bridge the gap.
-- **tmux session naming**: `ws::<slug>::<slug>` via `SessionNaming.slugify()`. Never assume session names are unique — use tmux session IDs internally.
+- **tmux session naming**: `ws__<slug>__<slug>` via `SessionNaming.slugify()`. Uses `__` (not `::`) because tmux reserves `:` for session:window notation. Never assume session names are unique — use tmux session IDs internally.
 - **No XCTest**: Tests are executable targets with a custom `assertEqual`/`assertTrue` helper. Run them as executables, not via `swift test`.

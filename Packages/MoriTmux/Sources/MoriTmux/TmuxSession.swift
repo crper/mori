@@ -24,9 +24,9 @@ public struct TmuxSession: Identifiable, Equatable, Sendable {
         self.windows = windows
     }
 
-    /// Whether this session follows the Mori naming convention `ws::<project>::<worktree>`.
+    /// Whether this session follows the Mori naming convention `ws__<project>__<worktree>`.
     public var isMoriSession: Bool {
-        name.hasPrefix("ws::")
+        name.hasPrefix(SessionNaming.prefix)
     }
 
     /// Extract the project slug from a Mori session name.

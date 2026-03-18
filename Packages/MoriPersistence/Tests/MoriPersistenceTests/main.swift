@@ -88,7 +88,7 @@ func testWorktreeInsertAndFetch() throws {
         path: "/anna",
         branch: "main",
         isMainWorktree: true,
-        tmuxSessionName: "ws::anna::main"
+        tmuxSessionName: "ws__anna__main"
     )
     try wtRepo.save(wt)
 
@@ -97,7 +97,7 @@ func testWorktreeInsertAndFetch() throws {
     assertEqual(fetched.first?.name, "main")
     assertEqual(fetched.first?.branch, "main")
     assertEqual(fetched.first?.isMainWorktree, true)
-    assertEqual(fetched.first?.tmuxSessionName, "ws::anna::main")
+    assertEqual(fetched.first?.tmuxSessionName, "ws__anna__main")
     assertEqual(fetched.first?.agentState, AgentState.none)
     assertEqual(fetched.first?.status, .active)
 }

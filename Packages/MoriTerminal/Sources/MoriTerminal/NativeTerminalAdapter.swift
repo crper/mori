@@ -168,12 +168,24 @@ public final class PTYTerminalView: NSView {
         _ = fcntl(masterFD, F_SETFL, flags | O_NONBLOCK)
 
         // Read output using GCD dispatch source.
-        // The event handler runs on a global queue, so we cannot capture `self` directly
-        // (@MainActor-isolated). Use a weak sendable wrapper to bridge back to main.
-        let source = DispatchSource.makeReadSource(fileDescriptor: masterFD, queue: .global(qos: .userInteractive))
-        self.readSource = source
-
+        // Setup is extracted to a nonisolated static method so the closures
+        // do not inherit @MainActor isolation from this NSView subclass.
         let weakSelf = WeakSendableRef(self)
+        let source = Self.makeReadSource(masterFD: masterFD, weakRef: weakSelf)
+        self.readSource = source
+        source.resume()
+    }
+
+    /// Build the dispatch source on a nonisolated context so its closures
+    /// don't inherit @MainActor isolation from PTYTerminalView.
+    private nonisolated static func makeReadSource(
+        masterFD: Int32,
+        weakRef: WeakSendableRef<PTYTerminalView>
+    ) -> DispatchSourceRead {
+        let source = DispatchSource.makeReadSource(
+            fileDescriptor: masterFD,
+            queue: .global(qos: .userInteractive)
+        )
 
         source.setEventHandler {
             var buffer = [UInt8](repeating: 0, count: 8192)
@@ -181,25 +193,27 @@ public final class PTYTerminalView: NSView {
             if bytesRead > 0 {
                 let data = Data(buffer[0..<bytesRead])
                 DispatchQueue.main.async {
-                    weakSelf.value?.handleOutput(data)
+                    MainActor.assumeIsolated {
+                        weakRef.value?.handleOutput(data)
+                    }
                 }
             } else if bytesRead == 0 || (bytesRead < 0 && errno != EAGAIN && errno != EINTR) {
                 source.cancel()
                 DispatchQueue.main.async {
-                    weakSelf.value?.appendText("\n[mori] Process exited.\n")
+                    MainActor.assumeIsolated {
+                        weakRef.value?.appendText("\n[mori] Process exited.\n")
+                    }
                 }
             }
         }
 
-        // Capture FD by value to avoid cross-actor access in cancel handler
-        let fdToClose = masterFD
         source.setCancelHandler {
-            if fdToClose >= 0 {
-                close(fdToClose)
+            if masterFD >= 0 {
+                close(masterFD)
             }
         }
 
-        source.resume()
+        return source
     }
 
     func stop() {
