@@ -6,4 +6,5 @@ public enum WindowBadge: String, Codable, Sendable {
     case error
     case running
     case waiting
+    case longRunning
 }

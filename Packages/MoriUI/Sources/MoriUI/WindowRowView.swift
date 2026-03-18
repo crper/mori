@@ -76,6 +76,11 @@ public struct WindowRowView: View {
                     .fill(Color.blue)
                     .frame(width: 6, height: 6)
                     .help("Unread")
+            case .longRunning:
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 6, height: 6)
+                    .help("Long running")
             case .idle:
                 EmptyView()
             }

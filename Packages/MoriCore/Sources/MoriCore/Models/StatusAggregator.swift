@@ -53,6 +53,8 @@ public enum StatusAggregator {
             return .unread
         case .running:
             return .info
+        case .longRunning:
+            return .warning
         case .waiting:
             return .waiting
         case .error:
