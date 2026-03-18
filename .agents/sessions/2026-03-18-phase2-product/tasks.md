@@ -49,20 +49,20 @@
 
 ## Phase 2.5: Unread Output Tracking
 
-- [ ] 2.5.1 — `UnreadTracker` in app target — in-memory last-seen map
-- [ ] 2.5.2 — Process pane_activity on each poll tick → detect new activity
-- [ ] 2.5.3 — Mark hasUnreadOutput on RuntimeWindow, roll up to Worktree + Project
-- [ ] 2.5.4 — Clear unread in `selectWindow()` — reset hasUnreadOutput, update tracker
-- [ ] 2.5.5 — Unread indicators in WorktreeSidebarView (dot/count on window + worktree rows)
-- [ ] 2.5.6 — Tests: UnreadTracker assertions
+- [x] 2.5.1 — `UnreadTracker` in app target — in-memory last-seen map
+- [x] 2.5.2 — Process pane_activity on each poll tick → detect new activity
+- [x] 2.5.3 — Mark hasUnreadOutput on RuntimeWindow, roll up to Worktree + Project
+- [x] 2.5.4 — Clear unread in `selectWindow()` — reset hasUnreadOutput, update tracker
+- [x] 2.5.5 — Unread indicators in WorktreeSidebarView (dot/count on window + worktree rows)
+- [x] 2.5.6 — Tests: UnreadTracker assertions
 
 ## Phase 2.6: Command Palette
 
-- [ ] 2.6.1 — `CommandPaletteItem` model (project/worktree/window/action variants)
-- [ ] 2.6.2 — `FuzzyMatcher` utility — scoring: prefix > word boundary > substring
-- [ ] 2.6.3 — `CommandPaletteDataSource` — collect items from AppState, score against query
-- [ ] 2.6.4 — `CommandPaletteController` — NSPanel + NSTextField + NSTableView
-- [ ] 2.6.5 — Register Cmd+K shortcut in AppDelegate
-- [ ] 2.6.6 — Wire selection → navigation (selectProject/selectWorktree/selectWindow) or action
-- [ ] 2.6.7 — Actions: Create Worktree, Refresh, Open Project
-- [ ] 2.6.8 — Tests: FuzzyMatcher assertions
+- [x] 2.6.1 — `CommandPaletteItem` model (project/worktree/window/action variants)
+- [x] 2.6.2 — `FuzzyMatcher` utility — scoring: prefix > word boundary > substring
+- [x] 2.6.3 — `CommandPaletteDataSource` — collect items from AppState, score against query
+- [x] 2.6.4 — `CommandPaletteController` — NSPanel + NSTextField + NSTableView
+- [x] 2.6.5 — Register Cmd+K shortcut in AppDelegate
+- [x] 2.6.6 — Wire selection → navigation (selectProject/selectWorktree/selectWindow) or action
+- [x] 2.6.7 — Actions: Create Worktree, Refresh, Open Project
+- [x] 2.6.8 — Tests: FuzzyMatcher assertions

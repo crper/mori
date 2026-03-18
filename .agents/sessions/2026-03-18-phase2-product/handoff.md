@@ -183,3 +183,100 @@ All 8 tasks completed. Live git status polling runs concurrently with tmux scann
 - `StatusAggregator.windowBadge(hasUnreadOutput:)` already maps unread to badge
 - Badge rendering in sidebar is ready for unread indicators
 - `pane_activity` field available on TmuxPane from Phase 2.2
+
+## Phase 2.5: Unread Output Tracking — COMPLETE
+
+### Summary
+
+All 6 tasks completed. UnreadTracker detects new terminal output by comparing pane_activity timestamps against last-seen values on each coordinated poll tick. Unread state flows from window-level through worktree and project aggregation. Selecting a window clears its unread state.
+
+### What was done
+
+1. **UnreadTracker** (app target) — `@MainActor` class with in-memory `[String: TimeInterval]` map keyed by `"worktreeId:windowId"`. `processActivity()` compares max pane_activity per window against last-seen timestamps. First-seen windows are recorded without triggering unread. Skips the currently selected window. `markSeen()` updates the last-seen timestamp.
+2. **Poll integration** — `coordinatedPoll()` calls `unreadTracker.processActivity()` after tmux scan, passing sessions, worktrees, and selectedWindowId. Returns set of newly-unread window IDs.
+3. **RuntimeWindow unread state** — `updateRuntimeState()` now accepts `unreadWindowIds` parameter. Windows are marked `hasUnreadOutput = true` if newly detected or previously unread. Badge derived via `StatusAggregator.windowBadge()`.
+4. **Unread rollup** — New `updateUnreadCounts()` method counts unread windows per worktree and sets `worktree.unreadCount`. `updateAggregatedBadges()` rolls up to `project.aggregateUnreadCount`.
+5. **Clear on select** — `selectWindow()` calls `clearUnread()` which: updates UnreadTracker's last-seen map via `markSeen()`, resets `hasUnreadOutput = false` on the RuntimeWindow, recomputes worktree unreadCount and project aggregates.
+6. **Sidebar indicators** — Already wired from Phase 2.4: WorktreeRowView shows blue capsule for `unreadCount > 0`, WindowRowView shows blue dot for `hasUnreadOutput`. No changes needed.
+7. **Tests** — 12 new assertions verifying unread badge derivation, rollup to worktree/project, clearing behavior, priority ordering, and multi-window counting. MoriCore tests now at 116/116.
+
+### Build verification
+
+- `swift build` from root: **clean, zero warnings**
+- MoriCore tests: **116/116 assertions passed** (up from 104)
+- MoriPersistence tests: **42/42 assertions passed**
+- MoriTmux tests: **105/105 assertions passed**
+- MoriGit tests: **99/99 assertions passed**
+- Total: **362 assertions passing**
+
+### Commits (4)
+
+- `462cb09` — feat: add UnreadTracker for in-memory pane activity tracking
+- `d80dd0f` — feat: integrate UnreadTracker into coordinated poll with unread rollup
+- `d8b3da7` — feat: clear unread state on selectWindow with tracker and aggregate recompute
+- `84c5e1b` — test: add unread tracking flow tests (116 assertions passing)
+
+### Key files created/modified
+
+- `Sources/Mori/App/UnreadTracker.swift` — NEW: in-memory pane activity tracking
+- `Sources/Mori/App/WorkspaceManager.swift` — Integrated UnreadTracker, unread rollup, clear on select
+- `Packages/MoriCore/Tests/MoriCoreTests/main.swift` — Unread flow tests
+
+### Ready for Phase 2.6
+
+- Unread tracking is fully operational; command palette can reference unread counts for prioritized results
+- All polling infrastructure (tmux + git + unread) runs on coordinated 5s timer
+- Sidebar badges render all status types: dirty, ahead/behind, unread, error, waiting
+
+## Phase 2.6: Command Palette — COMPLETE
+
+### Summary
+
+All 8 tasks completed. Command palette provides keyboard-driven navigation (Cmd+K) across projects, worktrees, windows, and actions with fuzzy search. FuzzyMatcher lives in MoriCore for testability.
+
+### What was done
+
+1. **CommandPaletteItem** (app target) — Enum with `.project`, `.worktree`, `.window`, `.action` cases. Each provides `title`, `subtitle`, and `iconName` (SF Symbols).
+2. **FuzzyMatcher** (MoriCore) — Pure scoring utility: exact prefix (100) > word boundary (75) > substring (50) > no match (0). Case-insensitive. Splits words at spaces, hyphens, underscores, slashes, dots, and camelCase transitions.
+3. **CommandPaletteDataSource** (app target) — Collects all items from AppState (projects, worktrees for selected project, windows for selected worktree) plus 3 static actions. Scores items against query, returns sorted by score with zero-score items excluded.
+4. **CommandPaletteController** (app target) — NSWindowController managing an NSPanel (floating, non-activating, transparent titlebar). NSTextField for search + NSTableView for results with icon, title, and subtitle. Keyboard navigation: Up/Down arrows, Enter to select, Escape to dismiss. Panel resizes dynamically based on result count.
+5. **Cmd+K shortcut** — Registered via `NSEvent.addLocalMonitorForEvents` in AppDelegate. Toggles palette visibility. Monitor removed on app termination.
+6. **Selection wiring** — `onSelectItem` closure routes to WorkspaceManager: `.project` → `selectProject()`, `.worktree` → `selectWorktree()`, `.window` → `selectWindow()`, `.action` → action handler. Palette dismisses after selection.
+7. **Actions** — "Create Worktree" (id: `action.create-worktree`) shows NSAlert with branch name input → `handleCreateWorktree()`. "Refresh" (id: `action.refresh`) → `coordinatedPoll()`. "Open Project" (id: `action.open-project`) → `showAddProjectPanel()`.
+8. **Tests** — 18 new FuzzyMatcher assertions: exact prefix, word boundary, substring, no match, empty query, case insensitivity, camelCase boundaries, score ordering. MoriCore tests now at 134/134.
+
+### Build verification
+
+- `swift build` from root: **clean, zero warnings**
+- MoriCore tests: **134/134 assertions passed** (up from 116)
+- MoriPersistence tests: **42/42 assertions passed**
+- MoriTmux tests: **105/105 assertions passed**
+- MoriGit tests: **99/99 assertions passed**
+- Total: **380 assertions passing**
+
+### Commits (5)
+
+- `f40cbd6` — feat: add CommandPaletteItem model for command palette entries
+- `655982b` — feat: add FuzzyMatcher utility with prefix/word-boundary/substring scoring
+- `4fcb72f` — feat: add CommandPaletteDataSource for collecting and scoring palette items
+- `dff8161` — feat: add CommandPaletteController with NSPanel, search field, and table view
+- `85c34ab` — feat: register Cmd+K shortcut and wire command palette to AppDelegate
+- `26abfbb` — test: add FuzzyMatcher assertions (134 total MoriCore assertions passing)
+
+### Key files created/modified
+
+- `Sources/Mori/App/CommandPaletteItem.swift` — NEW: palette item enum model
+- `Packages/MoriCore/Sources/MoriCore/FuzzyMatcher.swift` — NEW: fuzzy matching scoring utility
+- `Sources/Mori/App/CommandPaletteDataSource.swift` — NEW: item collection and search
+- `Sources/Mori/App/CommandPaletteController.swift` — NEW: NSPanel-based palette UI
+- `Sources/Mori/App/AppDelegate.swift` — Cmd+K registration, palette wiring, action handlers
+- `Packages/MoriCore/Tests/MoriCoreTests/main.swift` — FuzzyMatcher test assertions
+
+### Phase 2 Complete
+
+All 6 implementation phases (2.1-2.6) are now complete. Phase 2 delivered:
+- Git worktree management (MoriGit package, create/remove flows)
+- Session templates (basic, go, agent)
+- Live git status polling with badge aggregation
+- Unread output tracking
+- Command palette with fuzzy search (Cmd+K)
