@@ -49,38 +49,33 @@ public struct WindowRowView: View {
 
     @ViewBuilder
     private var windowBadgeView: some View {
-        if window.hasUnreadOutput {
-            Circle()
-                .fill(Color.blue)
-                .frame(width: 6, height: 6)
-                .help("Unread output")
-        } else if let badge = window.badge {
+        if let badge = window.badge {
             switch badge {
             case .error:
-                Circle()
-                    .fill(Color.red)
-                    .frame(width: 6, height: 6)
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.red)
                     .help("Error")
-            case .running:
-                Circle()
-                    .fill(Color.green)
-                    .frame(width: 6, height: 6)
-                    .help("Running")
             case .waiting:
-                Circle()
-                    .fill(Color.yellow)
-                    .frame(width: 6, height: 6)
-                    .help("Waiting")
+                Image(systemName: "exclamationmark.bubble.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.yellow)
+                    .help("Waiting for input")
+            case .longRunning:
+                Image(systemName: "clock.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.orange)
+                    .help("Long running")
+            case .running:
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.green)
+                    .help("Running")
             case .unread:
                 Circle()
                     .fill(Color.blue)
                     .frame(width: 6, height: 6)
-                    .help("Unread")
-            case .longRunning:
-                Circle()
-                    .fill(Color.orange)
-                    .frame(width: 6, height: 6)
-                    .help("Long running")
+                    .help("Unread output")
             case .idle:
                 EmptyView()
             }

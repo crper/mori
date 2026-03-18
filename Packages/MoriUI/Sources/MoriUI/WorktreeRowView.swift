@@ -32,6 +32,8 @@ public struct WorktreeRowView: View {
 
                 gitStatusBadges
 
+                alertBadgeView
+
                 statusIndicator
             }
             .padding(.vertical, 4)
@@ -89,6 +91,36 @@ public struct WorktreeRowView: View {
                     .background(Capsule().fill(Color.blue))
                     .help("\(worktree.unreadCount) unread")
             }
+        }
+    }
+
+    // MARK: - Alert Badge
+
+    @ViewBuilder
+    private var alertBadgeView: some View {
+        switch worktree.agentState {
+        case .error:
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 10))
+                .foregroundStyle(.red)
+                .help("Agent error")
+        case .waitingForInput:
+            Image(systemName: "exclamationmark.bubble.fill")
+                .font(.system(size: 10))
+                .foregroundStyle(.yellow)
+                .help("Agent waiting for input")
+        case .running:
+            Image(systemName: "bolt.fill")
+                .font(.system(size: 10))
+                .foregroundStyle(.green)
+                .help("Agent running")
+        case .completed:
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 10))
+                .foregroundStyle(.green)
+                .help("Agent completed")
+        case .none:
+            EmptyView()
         }
     }
 
