@@ -1,12 +1,12 @@
 # Phase 3: Agent-first — Task Checklist
 
 ## Phase 1: Window Semantic Tags
-- [ ] 1.1 — Create `WindowTag` enum in MoriCore
-- [ ] 1.2 — Add `tag` to `RuntimeWindow`, add `.longRunning` to `WindowBadge`
-- [ ] 1.3 — Add `tag` to `WindowTemplate`, update `TemplateRegistry`
-- [ ] 1.4 — Auto-assign tags during template application + name inference
-- [ ] 1.5 — Show tags in sidebar WindowRowView and command palette
-- [ ] 1.6 — Tests for WindowTag, RuntimeWindow tag, tag inference, WindowBadge.longRunning
+- [x] 1.1 — Create `WindowTag` enum in MoriCore
+- [x] 1.2 — Add `tag` to `RuntimeWindow`, add `.longRunning` to `WindowBadge`
+- [x] 1.3 — Add `tag` to `WindowTemplate`, update `TemplateRegistry`
+- [x] 1.4 — Auto-assign tags during template application + name inference
+- [x] 1.5 — Show tags in sidebar WindowRowView and command palette
+- [x] 1.6 — Tests for WindowTag, RuntimeWindow tag, tag inference, WindowBadge.longRunning
 
 ## Phase 2: Agent State Detection
 - [ ] 2.1 — Add `pane_current_command` and `pane_start_time` to TmuxParser/TmuxPane
