@@ -42,9 +42,9 @@
 - [x] 5.8 — Tests for IPC protocol serialization
 
 ## Phase 6: Automation Hooks
-- [ ] 6.1 — Define `HookEvent`, `HookAction`, `HookConfig` in MoriCore
-- [ ] 6.2 — Create `HookRunner` (read/parse .mori/hooks.json, caching)
-- [ ] 6.3 — Shell execution and tmuxSend for hook actions
-- [ ] 6.4 — Wire hooks into WorkspaceManager lifecycle (create/focus/close)
-- [ ] 6.5 — Add HookRunner to WorkspaceManager initialization
-- [ ] 6.6 — Tests for HookConfig JSON parsing
+- [x] 6.1 — Define `HookEvent`, `HookAction`, `HookConfig` in MoriCore
+- [x] 6.2 — Create `HookRunner` (read/parse .mori/hooks.json, caching)
+- [x] 6.3 — Shell execution and tmuxSend for hook actions
+- [x] 6.4 — Wire hooks into WorkspaceManager lifecycle (create/focus/close)
+- [x] 6.5 — Add HookRunner to WorkspaceManager initialization
+- [x] 6.6 — Tests for HookConfig JSON parsing

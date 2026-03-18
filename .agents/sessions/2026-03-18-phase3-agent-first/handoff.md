@@ -176,3 +176,34 @@ Implemented the CLI/IPC interface (tasks 5.1-5.8) across 6 commits. The Mori app
 - `IPCResponseEnvelope` wraps `IPCResponse` + `requestId` for wire format; the `IPCResponse` enum itself doesn't carry the ID
 - `send` command sends keys to a window by name; it uses the window's tmux ID as the pane target (works for single-pane windows; multi-pane targeting may need enhancement later)
 - Network.framework `NWListener` with Unix domain socket requires the endpoint to be set via `parameters.requiredLocalEndpoint`
+
+## Phase 6: Automation Hooks -- COMPLETE
+
+### Summary
+Implemented per-project automation hooks (tasks 6.1-6.6) across 4 commits. Projects can now define lifecycle hooks in `.mori/hooks.json` that fire shell commands or send tmux keys on worktree/window create, focus, and close events.
+
+### What was done
+1. **HookConfig schema** (`Packages/MoriCore/Sources/MoriCore/Models/HookConfig.swift`) -- `HookEvent` enum (6 lifecycle events), `HookAction` struct (shell + tmuxSend), `HookEntry` struct, `HookConfig` struct with `actions(for:)` lookup. All Codable + Sendable.
+2. **HookRunner** (`Sources/Mori/App/HookRunner.swift`) -- `@MainActor` class that reads `.mori/hooks.json` from project root. Caches parsed config per project with 60s TTL. Graceful failure on parse errors (logs warning, returns empty config). `HookContext` struct carries MORI_* env vars.
+3. **Shell execution** -- Shell actions run via `Process("/bin/zsh", "-c", command)` with env vars (MORI_PROJECT, MORI_WORKTREE, MORI_SESSION, MORI_CWD, MORI_WINDOW). Non-blocking via `Task.detached` with 10s timeout using structured concurrency. `tmuxSend` actions forward keys via `TmuxBackend.sendKeys`.
+4. **WorkspaceManager wiring** -- `hookRunner` property initialized with tmuxBackend. Hooks fire at 6 lifecycle points: `onWorktreeCreate` (after createWorktree), `onWorktreeFocus` (after selectWorktree), `onWorktreeClose` (before removeWorktree cleanup), `onWindowCreate` (after createNewWindow), `onWindowFocus` (after selectWindow), `onWindowClose` (before closeCurrentWindow kill). Helper methods `buildHookContext` and `fireHook` centralize context creation.
+5. **Tests** -- 45 new assertions (297 total MoriCore, 553 across all packages). Covers event raw values, Codable round-trips, action variants (shell/tmuxSend/both), full JSON decode, actions(for:) matching and aggregation, empty config, invalid JSON handling, entry filtering by event.
+
+### Files changed
+- `Packages/MoriCore/Sources/MoriCore/Models/HookConfig.swift` (new)
+- `Packages/MoriCore/Tests/MoriCoreTests/main.swift`
+- `Sources/Mori/App/HookRunner.swift` (new)
+- `Sources/Mori/App/WorkspaceManager.swift`
+
+### Build status
+- Zero warnings under Swift 6 strict concurrency
+- All 553 test assertions passing (297 core + 175 tmux + 42 persistence + 39 IPC)
+
+### Notes
+- Hook config file path: `<project-root>/.mori/hooks.json`
+- Cache invalidation: automatic after 60s TTL, or explicit via `hookRunner.invalidateCache()`
+- Shell timeout: 10 seconds; process is terminated if it exceeds this
+- `tmuxSend` uses empty paneId to target the active pane in the session
+- `SendableProcess` wrapper bridges `Process` across isolation boundaries
+- Module-level `hookShellTimeout` constant avoids `@MainActor` isolation issues in static methods
+- All hooks are fire-and-forget; failures are logged but don't propagate errors
