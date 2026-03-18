@@ -134,6 +134,12 @@ public actor TmuxBackend: TmuxControlling {
         )
     }
 
+    public func renameWindow(sessionId: String, windowId: String, newName: String) async throws {
+        _ = try await runner.run(
+            "rename-window", "-t", "\(sessionId):\(windowId)", newName
+        )
+    }
+
     public func createWindow(sessionId: String, name: String?, cwd: String?) async throws -> TmuxWindow {
         var args: [String] = ["new-window", "-t", sessionId, "-P", "-F", TmuxParser.windowFormat]
         if let name {
