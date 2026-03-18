@@ -551,6 +551,72 @@ func testWorktreeAlertStateWithLongRunning() {
     assertEqual(waitingState, .waiting)
 }
 
+// MARK: - StatusAggregator Richer Badge Tests
+
+func testWindowBadgeRicherPriority() {
+    // error > waiting > longRunning > running > unread > idle
+    assertEqual(
+        StatusAggregator.windowBadge(
+            hasUnreadOutput: true, isRunning: true, isLongRunning: true,
+            agentState: .error
+        ),
+        .error
+    )
+    assertEqual(
+        StatusAggregator.windowBadge(
+            hasUnreadOutput: true, isRunning: true, isLongRunning: true,
+            agentState: .waitingForInput
+        ),
+        .waiting
+    )
+    assertEqual(
+        StatusAggregator.windowBadge(
+            hasUnreadOutput: true, isRunning: true, isLongRunning: true,
+            agentState: .running
+        ),
+        .longRunning
+    )
+    assertEqual(
+        StatusAggregator.windowBadge(
+            hasUnreadOutput: true, isRunning: true, isLongRunning: false,
+            agentState: .none
+        ),
+        .running
+    )
+    assertEqual(
+        StatusAggregator.windowBadge(
+            hasUnreadOutput: true, isRunning: false, isLongRunning: false,
+            agentState: .none
+        ),
+        .unread
+    )
+    assertEqual(
+        StatusAggregator.windowBadge(
+            hasUnreadOutput: false, isRunning: false, isLongRunning: false,
+            agentState: .none
+        ),
+        .idle
+    )
+}
+
+func testWindowBadgeAgentCompleted() {
+    // Completed agent state doesn't trigger error/waiting, falls through to running/idle
+    assertEqual(
+        StatusAggregator.windowBadge(
+            hasUnreadOutput: false, isRunning: false, isLongRunning: false,
+            agentState: .completed
+        ),
+        .idle
+    )
+    assertEqual(
+        StatusAggregator.windowBadge(
+            hasUnreadOutput: true, isRunning: false, isLongRunning: false,
+            agentState: .completed
+        ),
+        .unread
+    )
+}
+
 func testTemplateRegistryTags() {
     // Basic template tags
     assertEqual(TemplateRegistry.basic.windows[0].tag, .shell)
@@ -632,6 +698,8 @@ testRuntimeWindowWithTagCodable()
 testWindowBadgeLongRunning()
 testAlertStateFromLongRunningBadge()
 testWorktreeAlertStateWithLongRunning()
+testWindowBadgeRicherPriority()
+testWindowBadgeAgentCompleted()
 testTemplateRegistryTags()
 
 printResults()

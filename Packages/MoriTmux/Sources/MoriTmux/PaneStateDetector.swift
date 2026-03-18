@@ -83,10 +83,13 @@ public enum PaneStateDetector {
     /// Match waiting-for-input patterns in captured output lines.
     static func matchesWaitingForInput(_ lines: [String]) -> Bool {
         for line in lines.reversed() {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty { continue }
-            if trimmed.hasSuffix("> ") || trimmed.hasSuffix("? ") { return true }
-            let lower = trimmed.lowercased()
+            let stripped = line.trimmingCharacters(in: .whitespaces)
+            if stripped.isEmpty { continue }
+            // Check prompt suffixes — use original line to preserve trailing whitespace,
+            // but also check stripped version since tmux may omit trailing spaces.
+            if line.hasSuffix("> ") || line.hasSuffix("? ") { return true }
+            if stripped.hasSuffix(">") || stripped.hasSuffix("?") { return true }
+            let lower = stripped.lowercased()
             if lower.contains("waiting for input") { return true }
             if lower.contains("[y/n]") { return true }
             if lower.contains("press any key") { return true }

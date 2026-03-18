@@ -259,6 +259,220 @@ func testSessionFormatFields() {
     assertTrue(TmuxParser.sessionFormat.contains("#{session_attached}"))
 }
 
+// MARK: - DetectedAgentState Tests
+
+func testDetectedAgentStateRawValues() {
+    assertEqual(DetectedAgentState.none.rawValue, "none")
+    assertEqual(DetectedAgentState.running.rawValue, "running")
+    assertEqual(DetectedAgentState.waitingForInput.rawValue, "waitingForInput")
+    assertEqual(DetectedAgentState.error.rawValue, "error")
+    assertEqual(DetectedAgentState.completed.rawValue, "completed")
+}
+
+// MARK: - PaneStateDetector Tests
+
+func testDetectShellProcessIdle() {
+    // Shell commands should be detected as idle (not running)
+    for shell in ["bash", "zsh", "fish", "sh", "-bash", "-zsh"] {
+        let pane = TmuxPane(paneId: "%0", currentCommand: shell, startTime: 1000)
+        let state = PaneStateDetector.detect(pane: pane, capturedOutput: "", now: 1100)
+        assertFalse(state.isRunning, "Shell '\(shell)' should not be running")
+        assertFalse(state.isLongRunning, "Shell '\(shell)' should not be long-running")
+        assertEqual(state.detectedAgentState, .none, "Shell '\(shell)' should have .none agent state")
+    }
+}
+
+func testDetectNilCommandIdle() {
+    let pane = TmuxPane(paneId: "%0", currentCommand: nil)
+    let state = PaneStateDetector.detect(pane: pane, capturedOutput: "", now: 1000)
+    assertFalse(state.isRunning)
+    assertEqual(state.detectedAgentState, .none)
+}
+
+func testDetectEmptyCommandIdle() {
+    let pane = TmuxPane(paneId: "%0", currentCommand: "")
+    let state = PaneStateDetector.detect(pane: pane, capturedOutput: "", now: 1000)
+    assertFalse(state.isRunning)
+}
+
+func testDetectRunningCommand() {
+    let pane = TmuxPane(paneId: "%0", currentCommand: "node", startTime: 1090)
+    let state = PaneStateDetector.detect(pane: pane, capturedOutput: "", now: 1100)
+    assertTrue(state.isRunning, "Non-shell command should be running")
+    assertFalse(state.isLongRunning, "10s is below 30s threshold")
+    assertEqual(state.detectedAgentState, .running)
+    assertEqual(state.command, "node")
+}
+
+func testDetectLongRunningCommand() {
+    let pane = TmuxPane(paneId: "%0", currentCommand: "python", startTime: 1000)
+    let state = PaneStateDetector.detect(pane: pane, capturedOutput: "", now: 1100)
+    assertTrue(state.isRunning)
+    assertTrue(state.isLongRunning, "100s exceeds 30s threshold")
+}
+
+func testDetectLongRunningThresholdBoundary() {
+    // Exactly 30s — should not be long-running (> 30, not >=)
+    let pane = TmuxPane(paneId: "%0", currentCommand: "make", startTime: 1000)
+    let state30 = PaneStateDetector.detect(pane: pane, capturedOutput: "", now: 1030)
+    assertFalse(state30.isLongRunning, "Exactly 30s should not be long-running")
+
+    // 31s — should be long-running
+    let state31 = PaneStateDetector.detect(pane: pane, capturedOutput: "", now: 1031)
+    assertTrue(state31.isLongRunning, "31s should be long-running")
+}
+
+func testDetectWaitingForInputPrompt() {
+    let pane = TmuxPane(paneId: "%0", currentCommand: "claude", startTime: 1000)
+    let output = "Some output\nDo you want to continue? > "
+    let state = PaneStateDetector.detect(pane: pane, capturedOutput: output, now: 1100)
+    assertEqual(state.detectedAgentState, .waitingForInput)
+}
+
+func testDetectWaitingForInputQuestion() {
+    let pane = TmuxPane(paneId: "%0", currentCommand: "claude", startTime: 1000)
+    let output = "Proceed with changes? "
+    let state = PaneStateDetector.detect(pane: pane, capturedOutput: output, now: 1100)
+    assertEqual(state.detectedAgentState, .waitingForInput)
+}
+
+func testDetectWaitingForInputYesNo() {
+    let pane = TmuxPane(paneId: "%0", currentCommand: "npm", startTime: 1000)
+    let output = "Install dependencies [Y/n]"
+    let state = PaneStateDetector.detect(pane: pane, capturedOutput: output, now: 1100)
+    assertEqual(state.detectedAgentState, .waitingForInput)
+}
+
+func testDetectWaitingForInputPressAnyKey() {
+    let pane = TmuxPane(paneId: "%0", currentCommand: "less", startTime: 1000)
+    let output = "Press any key to continue"
+    let state = PaneStateDetector.detect(pane: pane, capturedOutput: output, now: 1100)
+    assertEqual(state.detectedAgentState, .waitingForInput)
+}
+
+func testDetectWaitingForInputMessage() {
+    let pane = TmuxPane(paneId: "%0", currentCommand: "agent", startTime: 1000)
+    let output = "Waiting for input from user..."
+    let state = PaneStateDetector.detect(pane: pane, capturedOutput: output, now: 1100)
+    assertEqual(state.detectedAgentState, .waitingForInput)
+}
+
+func testDetectErrorPatterns() {
+    let pane = TmuxPane(paneId: "%0", currentCommand: "make", startTime: 1000)
+
+    let errorOutput = "src/main.c:10: error: undefined reference"
+    let s1 = PaneStateDetector.detect(pane: pane, capturedOutput: errorOutput, now: 1100)
+    assertEqual(s1.detectedAgentState, .error, "Should detect 'error:' pattern")
+
+    let failedOutput = "test_suite FAILED"
+    let s2 = PaneStateDetector.detect(pane: pane, capturedOutput: failedOutput, now: 1100)
+    assertEqual(s2.detectedAgentState, .error, "Should detect 'FAILED' pattern")
+
+    let panicOutput = "goroutine 1: panic: runtime error"
+    let s3 = PaneStateDetector.detect(pane: pane, capturedOutput: panicOutput, now: 1100)
+    assertEqual(s3.detectedAgentState, .error, "Should detect 'panic:' pattern")
+
+    let fatalOutput = "fatal: not a git repository"
+    let s4 = PaneStateDetector.detect(pane: pane, capturedOutput: fatalOutput, now: 1100)
+    assertEqual(s4.detectedAgentState, .error, "Should detect 'fatal:' pattern")
+}
+
+func testDetectCompletedPatterns() {
+    let pane = TmuxPane(paneId: "%0", currentCommand: "make", startTime: 1000)
+
+    let doneOutput = "Build Done in 5.2s"
+    let s1 = PaneStateDetector.detect(pane: pane, capturedOutput: doneOutput, now: 1100)
+    assertEqual(s1.detectedAgentState, .completed, "Should detect 'Done' pattern")
+
+    let completeOutput = "Installation Complete"
+    let s2 = PaneStateDetector.detect(pane: pane, capturedOutput: completeOutput, now: 1100)
+    assertEqual(s2.detectedAgentState, .completed, "Should detect 'Complete' pattern")
+
+    let finishedOutput = "Task Finished successfully"
+    let s3 = PaneStateDetector.detect(pane: pane, capturedOutput: finishedOutput, now: 1100)
+    assertEqual(s3.detectedAgentState, .completed, "Should detect 'Finished' pattern")
+}
+
+func testDetectRunningNoPatterns() {
+    // Running command with no matching patterns -> running
+    let pane = TmuxPane(paneId: "%0", currentCommand: "python", startTime: 1000)
+    // "complete" in output matches completed pattern, so use neutral text
+    let output = "Processing items...\n42/100 records"
+    let state = PaneStateDetector.detect(pane: pane, capturedOutput: output, now: 1100)
+    assertEqual(state.detectedAgentState, .running)
+}
+
+func testDetectExitCode() {
+    let pane = TmuxPane(paneId: "%0", currentCommand: "zsh")
+    let output = "Command failed\nexit code: 1\n"
+    let state = PaneStateDetector.detect(pane: pane, capturedOutput: output, now: 1000)
+    assertEqual(state.exitCode, 1)
+}
+
+func testDetectExitCodeExitedWith() {
+    let pane = TmuxPane(paneId: "%0", currentCommand: "zsh")
+    let output = "Process exited with 127"
+    let state = PaneStateDetector.detect(pane: pane, capturedOutput: output, now: 1000)
+    assertEqual(state.exitCode, 127)
+}
+
+func testDetectNoExitCode() {
+    let pane = TmuxPane(paneId: "%0", currentCommand: "zsh")
+    let output = "Normal output without exit info"
+    let state = PaneStateDetector.detect(pane: pane, capturedOutput: output, now: 1000)
+    assertNil(state.exitCode)
+}
+
+func testWaitingPriorityOverError() {
+    // waitingForInput has higher priority than error
+    let pane = TmuxPane(paneId: "%0", currentCommand: "agent", startTime: 1000)
+    let output = "error: something went wrong\nRetry? > "
+    let state = PaneStateDetector.detect(pane: pane, capturedOutput: output, now: 1100)
+    assertEqual(state.detectedAgentState, .waitingForInput,
+        "waitingForInput should take priority over error")
+}
+
+func testIsShellProcess() {
+    assertTrue(PaneStateDetector.isShellProcess("bash"))
+    assertTrue(PaneStateDetector.isShellProcess("zsh"))
+    assertTrue(PaneStateDetector.isShellProcess("fish"))
+    assertTrue(PaneStateDetector.isShellProcess("sh"))
+    assertTrue(PaneStateDetector.isShellProcess("-bash"))
+    assertTrue(PaneStateDetector.isShellProcess("-zsh"))
+    assertTrue(PaneStateDetector.isShellProcess(nil))
+    assertTrue(PaneStateDetector.isShellProcess(""))
+    assertFalse(PaneStateDetector.isShellProcess("node"))
+    assertFalse(PaneStateDetector.isShellProcess("python"))
+    assertFalse(PaneStateDetector.isShellProcess("vim"))
+}
+
+func testParsePanesWithCurrentCommand() {
+    let output = "%0\t/dev/ttys001\t1\t/Users/test\tzsh\t1710784200\tnode\t1710784100\n"
+    let panes = TmuxParser.parsePanes(output)
+    assertEqual(panes.count, 1)
+    assertEqual(panes[0].currentCommand, "node")
+    assertEqual(panes[0].startTime, 1710784100.0)
+}
+
+func testParsePanesWithEmptyCommandFields() {
+    let output = "%0\t/dev/ttys001\t1\t/Users/test\tzsh\t1710784200\t\t\n"
+    let panes = TmuxParser.parsePanes(output)
+    assertEqual(panes.count, 1)
+    assertNil(panes[0].currentCommand, "Empty command should be nil")
+    assertNil(panes[0].startTime, "Empty start time should be nil")
+}
+
+func testPaneFormatContainsNewFields() {
+    assertTrue(
+        TmuxParser.paneFormat.contains("#{pane_current_command}"),
+        "Pane format should include pane_current_command"
+    )
+    assertTrue(
+        TmuxParser.paneFormat.contains("#{pane_start_time}"),
+        "Pane format should include pane_start_time"
+    )
+}
+
 // MARK: - Main
 
 print("=== MoriTmux Tests ===")
@@ -301,8 +515,36 @@ testTmuxSessionMoriDetection()
 testFormatStringsContainDelimiter()
 testSessionFormatFields()
 
+// DetectedAgentState
+testDetectedAgentStateRawValues()
+
+// PaneStateDetector
+testDetectShellProcessIdle()
+testDetectNilCommandIdle()
+testDetectEmptyCommandIdle()
+testDetectRunningCommand()
+testDetectLongRunningCommand()
+testDetectLongRunningThresholdBoundary()
+testDetectWaitingForInputPrompt()
+testDetectWaitingForInputQuestion()
+testDetectWaitingForInputYesNo()
+testDetectWaitingForInputPressAnyKey()
+testDetectWaitingForInputMessage()
+testDetectErrorPatterns()
+testDetectCompletedPatterns()
+testDetectRunningNoPatterns()
+testDetectExitCode()
+testDetectExitCodeExitedWith()
+testDetectNoExitCode()
+testWaitingPriorityOverError()
+testIsShellProcess()
+testParsePanesWithCurrentCommand()
+testParsePanesWithEmptyCommandFields()
+testPaneFormatContainsNewFields()
+
 printResults()
 
 if failCount > 0 {
+    fflush(stdout)
     fatalError("Tests failed")
 }
