@@ -350,4 +350,16 @@ Make Mori agent-aware and automatable. Detect what's running in each terminal pa
 
 ## Final Status
 
-(Updated after implementation completes)
+**COMPLETE** — All 36 tasks across 6 phases implemented and reviewed.
+
+- 39 commits, zero build warnings (Swift 6 strict concurrency)
+- 553 test assertions passing (297 core + 175 tmux + 42 persistence + 39 IPC)
+- All 6 phase reviews: APPROVED
+
+### Features delivered
+1. **Window Semantic Tags** — WindowTag enum (shell/editor/agent/server/logs/tests), auto-inferred from names, shown in sidebar + command palette with SF Symbol icons, filterable via `tag:` prefix
+2. **Agent State Detection** — PaneStateDetector with pattern matching (waiting/error/completed/running), capture-pane for agent-tagged windows only, 30s long-running threshold
+3. **Worktree Status Enhancements** — Per-window isRunning/isLongRunning/agentState/exitCode fields, richer badge icons with colors, worktree-level aggregation with poll-cycle reset
+4. **Notifications** — NotificationDebouncer (pure, testable), macOS native notifications for agent-waiting/error/long-running-complete, dock badge for unread count, click-to-focus
+5. **CLI / IPC** — MoriIPC package with Network.framework Unix socket, `ws` CLI (6 subcommands), IPCHandler dispatching to WorkspaceManager
+6. **Automation Hooks** — .mori/hooks.json per-project config, 6 lifecycle events, shell + tmuxSend actions, 60s cache, 10s timeout
