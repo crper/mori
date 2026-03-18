@@ -53,7 +53,7 @@ public final class PTYTerminalView: NSView {
     private var readSource: DispatchSourceRead?
 
     private let scrollView = NSScrollView()
-    private let textView = NSTextView()
+    private let textView = TerminalTextView()
     private var textStorage: NSTextStorage { textView.textStorage! }
 
     /// ANSI parser state
@@ -106,6 +106,9 @@ public final class PTYTerminalView: NSView {
         textView.textContainer?.widthTracksTextView = true
         textView.font = monoFont
         textView.textColor = .white
+        textView.onKeyDown = { [weak self] event in
+            self?.interpretKeyEvent(event)
+        }
 
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
@@ -468,6 +471,30 @@ public final class PTYTerminalView: NSView {
             }
         }
 
+        return super.performKeyEquivalent(with: event)
+    }
+}
+
+// MARK: - TerminalTextView
+
+/// NSTextView subclass that forwards keyboard input to the PTY
+/// while preserving mouse-based text selection.
+private final class TerminalTextView: NSTextView {
+    var onKeyDown: ((NSEvent) -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        if let handler = onKeyDown {
+            handler(event)
+        } else {
+            super.keyDown(with: event)
+        }
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // Let the parent PTYTerminalView handle Cmd+C/V/A
+        if let parent = superview?.superview as? PTYTerminalView {
+            return parent.performKeyEquivalent(with: event)
+        }
         return super.performKeyEquivalent(with: event)
     }
 }

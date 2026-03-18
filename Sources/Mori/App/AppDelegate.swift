@@ -106,6 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         windowController.contentViewController = splitVC
         windowController.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
 
         // Wire terminal switch: when worktree selection changes, attach terminal
         manager.onTerminalSwitch = { [weak terminalArea] sessionName, workingDirectory in
