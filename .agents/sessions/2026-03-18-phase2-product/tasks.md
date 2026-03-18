@@ -26,15 +26,15 @@
 
 ## Phase 2.3: Create Worktree Flow
 
-- [ ] 2.3.1 — Add `GitBackend` as dependency of `WorkspaceManager`
-- [ ] 2.3.2 — Validate git repo on `addProject()`, set `gitCommonDir` properly
-- [ ] 2.3.3 — `WorkspaceManager.createWorktree(projectId:branchName:)` — full orchestration
-- [ ] 2.3.4 — Default path logic: `~/.mori/{project-slug}/{branch-slug}`
-- [ ] 2.3.5 — Partial failure handling (git ok + tmux fail → still save to DB)
-- [ ] 2.3.6 — Sidebar "+" button → sheet/popover with branch name input
-- [ ] 2.3.7 — Wire UI action → WorkspaceManager → refresh → select new worktree
-- [ ] 2.3.8 — Error handling (branch exists, invalid name, git failure) with alerts
-- [ ] 2.3.9 — `WorkspaceManager.removeWorktree(worktreeId:)` with confirmation dialog
+- [x] 2.3.1 — Add `GitBackend` as dependency of `WorkspaceManager`
+- [x] 2.3.2 — Validate git repo on `addProject()`, set `gitCommonDir` properly
+- [x] 2.3.3 — `WorkspaceManager.createWorktree(projectId:branchName:)` — full orchestration
+- [x] 2.3.4 — Default path logic: `~/.mori/{project-slug}/{branch-slug}`
+- [x] 2.3.5 — Partial failure handling (git ok + tmux fail → still save to DB)
+- [x] 2.3.6 — Sidebar "+" button → sheet/popover with branch name input
+- [x] 2.3.7 — Wire UI action → WorkspaceManager → refresh → select new worktree
+- [x] 2.3.8 — Error handling (branch exists, invalid name, git failure) with alerts
+- [x] 2.3.9 — `WorkspaceManager.removeWorktree(worktreeId:)` with confirmation dialog
 
 ## Phase 2.4: Git Status Polling + Badges
 

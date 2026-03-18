@@ -83,3 +83,50 @@ All 6 tasks completed. TmuxBackend now supports window creation, key sending, an
 - TmuxBackend has all methods needed for worktree creation flow (createSession, createWindow, renameWindow, sendKeys)
 - TemplateApplicator can be called from WorkspaceManager after session creation
 - pane_activity field ready for UnreadTracker in Phase 2.5
+
+## Phase 2.3: Create Worktree Flow — COMPLETE
+
+### Summary
+
+All 9 tasks completed. End-to-end worktree creation from sidebar UI through git + tmux + DB, with error handling and removal support.
+
+### What was done
+
+1. **GitBackend as WorkspaceManager dependency** — Added `gitBackend: GitBackend` as init param (defaults to fresh instance). AppDelegate wires it in.
+2. **Git repo validation on addProject** — Added `gitCommonDir()` to GitControlling/GitBackend using `git rev-parse --git-common-dir`. `addProject()` is now async, validates git repo and resolves common dir. Handles relative paths from git output.
+3. **createWorktree orchestration** — Full flow: validate branch name, compute path `~/.mori/{project-slug}/{branch-slug}`, git worktree add, DB save, tmux session create, basic template apply, update AppState, select new worktree.
+4. **Default path logic** — Worktrees created at `~/.mori/{project-slug}/{branch-slug}` with `FileManager.createDirectory(withIntermediateDirectories:)`.
+5. **Partial failure handling** — If git fails, no DB write. If tmux fails after git success, worktree is still saved to DB (tmux session created on next select via `ensureTmuxSession`).
+6. **Sidebar "+" button** — WorktreeSidebarView header with "Worktrees" label and "+" button. Inline text field for branch name with submit/cancel. Context menu on worktree rows for removal.
+7. **UI wiring** — HostingControllers pass `onCreateWorktree` and `onRemoveWorktree` callbacks. AppDelegate bridges to `WorkspaceManager.handleCreateWorktree` and `removeWorktree` via async Tasks.
+8. **Error handling** — `WorkspaceError` enum with `.projectNotFound`, `.branchNameEmpty`, `.branchNameInvalid`. Branch names validated for git-invalid characters (spaces, tildes, colons, etc.). NSAlert shown for all error cases.
+9. **removeWorktree** — NSAlert confirmation with three options: "Remove from Mori" (soft delete, mark unavailable), "Remove from Mori and Delete Files" (soft delete + `git worktree remove` + kill tmux session), "Cancel". Main worktree removal prevented.
+
+### Build verification
+
+- `swift build` from root: **clean, no warnings**
+
+### Commits (6)
+
+- `6044730` — feat: add GitBackend as dependency of WorkspaceManager
+- `4e2c7d2` — feat: validate git repo on addProject and set gitCommonDir
+- `b5c1cbe` — feat: add createWorktree with default path logic and partial failure handling
+- `9b4b57e` — feat: add sidebar "+" button with branch name input for worktree creation
+- `d6d6c99` — feat: wire sidebar create/remove worktree actions to WorkspaceManager
+- `6d64988` — feat: add branch name validation and user-facing error alerts
+
+### Key files modified
+
+- `Sources/Mori/App/WorkspaceManager.swift` — createWorktree, removeWorktree, handleCreateWorktree, WorkspaceError
+- `Sources/Mori/App/AppDelegate.swift` — GitBackend wiring, async addProject call, sidebar callbacks
+- `Sources/Mori/App/HostingControllers.swift` — onCreateWorktree/onRemoveWorktree callback passthrough
+- `Packages/MoriUI/Sources/MoriUI/WorktreeSidebarView.swift` — header, "+" button, branch input, context menu
+- `Packages/MoriGit/Sources/MoriGit/GitControlling.swift` — gitCommonDir protocol method
+- `Packages/MoriGit/Sources/MoriGit/GitBackend.swift` — gitCommonDir implementation
+
+### Ready for Phase 2.4
+
+- WorkspaceManager has gitBackend for status polling
+- createWorktree flow tested via build; ready for git status integration
+- TemplateApplicator already applies basic template on worktree creation
+- Sidebar UI ready for badge rendering additions
