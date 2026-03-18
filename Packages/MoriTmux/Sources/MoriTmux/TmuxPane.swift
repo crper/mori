@@ -10,6 +10,10 @@ public struct TmuxPane: Identifiable, Equatable, Sendable {
     public let title: String?
     /// Unix timestamp (seconds since epoch) of last pane activity, from `#{pane_activity}`.
     public let lastActivity: TimeInterval?
+    /// The current command running in the pane, from `#{pane_current_command}`.
+    public let currentCommand: String?
+    /// Unix timestamp (seconds since epoch) of when the pane's current command started, from `#{pane_start_time}`.
+    public let startTime: TimeInterval?
 
     public init(
         paneId: String,
@@ -17,7 +21,9 @@ public struct TmuxPane: Identifiable, Equatable, Sendable {
         isActive: Bool = false,
         currentPath: String? = nil,
         title: String? = nil,
-        lastActivity: TimeInterval? = nil
+        lastActivity: TimeInterval? = nil,
+        currentCommand: String? = nil,
+        startTime: TimeInterval? = nil
     ) {
         self.paneId = paneId
         self.tty = tty
@@ -25,5 +31,7 @@ public struct TmuxPane: Identifiable, Equatable, Sendable {
         self.currentPath = currentPath
         self.title = title
         self.lastActivity = lastActivity
+        self.currentCommand = currentCommand
+        self.startTime = startTime
     }
 }
