@@ -12,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var workspaceManager: WorkspaceManager?
     private var appState: AppState?
     private var terminalAreaController: TerminalAreaViewController?
+    private var commandPaletteController: CommandPaletteController?
+    private var keyMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Task 3.8: Single instance check
@@ -116,6 +118,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Set up the main menu bar
         setupMainMenu()
 
+        // Set up command palette (Cmd+K)
+        setupCommandPalette(appState: state, manager: manager)
+
         // Update window title from current project
         updateWindowTitle()
 
@@ -136,6 +141,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // Remove Cmd+K key monitor
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
+
         // Stop coordinated polling
         workspaceManager?.stopPolling()
 
@@ -275,6 +286,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             """
         alert.addButton(withTitle: "OK")
         alert.runModal()
+    }
+
+    // MARK: - Command Palette (Task 2.6.5)
+
+    private func setupCommandPalette(appState: AppState, manager: WorkspaceManager) {
+        let palette = CommandPaletteController(appState: appState)
+        self.commandPaletteController = palette
+
+        // Wire item selection to WorkspaceManager navigation and actions
+        palette.onSelectItem = { [weak self, weak manager] item in
+            guard let self, let manager else { return }
+            self.handlePaletteSelection(item, manager: manager)
+        }
+
+        // Register Cmd+K local key monitor
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak palette] event in
+            if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "k" {
+                palette?.toggle()
+                return nil  // Consume the event
+            }
+            return event
+        }
+    }
+
+    private func handlePaletteSelection(_ item: CommandPaletteItem, manager: WorkspaceManager) {
+        switch item {
+        case .project(let id, _):
+            manager.selectProject(id)
+            mainWindowController?.updateTitle(projectName: appState?.selectedProject?.name)
+
+        case .worktree(let id, _, _, _):
+            manager.selectWorktree(id)
+
+        case .window(let id, _, _):
+            manager.selectWindow(id)
+
+        case .action(let id, _, _):
+            handlePaletteAction(id, manager: manager)
+        }
+    }
+
+    private func handlePaletteAction(_ actionId: String, manager: WorkspaceManager) {
+        switch actionId {
+        case "action.create-worktree":
+            // Prompt for branch name via a simple input dialog
+            let alert = NSAlert()
+            alert.messageText = "Create Worktree"
+            alert.informativeText = "Enter a branch name:"
+            alert.addButton(withTitle: "Create")
+            alert.addButton(withTitle: "Cancel")
+
+            let inputField = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
+            inputField.placeholderString = "feature/my-branch"
+            alert.accessoryView = inputField
+
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                let branchName = inputField.stringValue
+                Task { @MainActor in
+                    await manager.handleCreateWorktree(branchName: branchName)
+                }
+            }
+
+        case "action.refresh":
+            Task { @MainActor in
+                await manager.coordinatedPoll()
+            }
+
+        case "action.open-project":
+            showAddProjectPanel()
+
+        default:
+            break
+        }
     }
 
     // MARK: - Helpers
