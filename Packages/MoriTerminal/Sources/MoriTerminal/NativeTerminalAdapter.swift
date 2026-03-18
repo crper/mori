@@ -167,23 +167,26 @@ public final class PTYTerminalView: NSView {
         let flags = fcntl(masterFD, F_GETFL)
         _ = fcntl(masterFD, F_SETFL, flags | O_NONBLOCK)
 
-        // Read output using GCD dispatch source for efficiency
+        // Read output using GCD dispatch source.
+        // The event handler runs on a global queue, so we cannot capture `self` directly
+        // (@MainActor-isolated). Use a weak sendable wrapper to bridge back to main.
         let source = DispatchSource.makeReadSource(fileDescriptor: masterFD, queue: .global(qos: .userInteractive))
         self.readSource = source
 
-        source.setEventHandler { [weak self] in
-            guard let self else { return }
+        let weakSelf = WeakSendableRef(self)
+
+        source.setEventHandler {
             var buffer = [UInt8](repeating: 0, count: 8192)
             let bytesRead = read(masterFD, &buffer, buffer.count)
             if bytesRead > 0 {
                 let data = Data(buffer[0..<bytesRead])
                 DispatchQueue.main.async {
-                    self.handleOutput(data)
+                    weakSelf.value?.handleOutput(data)
                 }
             } else if bytesRead == 0 || (bytesRead < 0 && errno != EAGAIN && errno != EINTR) {
                 source.cancel()
                 DispatchQueue.main.async {
-                    self.appendText("\n[mori] Process exited.\n")
+                    weakSelf.value?.appendText("\n[mori] Process exited.\n")
                 }
             }
         }
@@ -214,16 +217,12 @@ public final class PTYTerminalView: NSView {
     }
 
     /// Non-isolated cleanup for deinit.
-    /// Uses nonisolated(unsafe) copies to avoid actor isolation issues.
     private nonisolated func stopNonisolated() {
-        // Capture values without actor isolation for deinit safety
         nonisolated(unsafe) let pid = childPID
         nonisolated(unsafe) let source = readSource
-
         if pid > 0 {
             kill(pid, SIGHUP)
         }
-        // Cancel source — its cancel handler will close the FD
         source?.cancel()
     }
 
@@ -457,4 +456,13 @@ public final class PTYTerminalView: NSView {
 
         return super.performKeyEquivalent(with: event)
     }
+}
+
+// MARK: - WeakSendableRef
+
+/// A weak, Sendable wrapper for passing @MainActor-isolated objects into GCD closures.
+/// Access `.value` only from the main queue.
+private final class WeakSendableRef<T: AnyObject>: @unchecked Sendable {
+    weak var value: T?
+    init(_ value: T) { self.value = value }
 }
