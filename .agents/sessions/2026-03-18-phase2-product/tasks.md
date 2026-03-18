@@ -38,14 +38,14 @@
 
 ## Phase 2.4: Git Status Polling + Badges
 
-- [ ] 2.4.1 — `GitStatusCoordinator` in app target — encapsulates git polling with TaskGroup
-- [ ] 2.4.2 — Single coordinated polling timer in WorkspaceManager (replaces TmuxBackend self-polling)
-- [ ] 2.4.3 — Update Worktree fields (hasUncommittedChanges, aheadCount, behindCount) + persist
-- [ ] 2.4.4 — Window badge derivation from tmux pane state
-- [ ] 2.4.5 — `StatusAggregator` in MoriCore — pure aggregation logic (worktree + project levels)
-- [ ] 2.4.6 — Update AppState with aggregated badges
-- [ ] 2.4.7 — Badge rendering in WorktreeSidebarView
-- [ ] 2.4.8 — Tests: StatusAggregator assertions (add to MoriCore test target)
+- [x] 2.4.1 — `GitStatusCoordinator` in app target — encapsulates git polling with TaskGroup
+- [x] 2.4.2 — Single coordinated polling timer in WorkspaceManager (replaces TmuxBackend self-polling)
+- [x] 2.4.3 — Update Worktree fields (hasUncommittedChanges, aheadCount, behindCount) + persist
+- [x] 2.4.4 — Window badge derivation from tmux pane state
+- [x] 2.4.5 — `StatusAggregator` in MoriCore — pure aggregation logic (worktree + project levels)
+- [x] 2.4.6 — Update AppState with aggregated badges
+- [x] 2.4.7 — Badge rendering in WorktreeSidebarView
+- [x] 2.4.8 — Tests: StatusAggregator assertions (add to MoriCore test target)
 
 ## Phase 2.5: Unread Output Tracking
 

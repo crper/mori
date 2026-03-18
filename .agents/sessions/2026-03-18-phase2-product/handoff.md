@@ -130,3 +130,56 @@ All 9 tasks completed. End-to-end worktree creation from sidebar UI through git 
 - createWorktree flow tested via build; ready for git status integration
 - TemplateApplicator already applies basic template on worktree creation
 - Sidebar UI ready for badge rendering additions
+
+## Phase 2.4: Git Status Polling + Badges — COMPLETE
+
+### Summary
+
+All 8 tasks completed. Live git status polling runs concurrently with tmux scanning on a coordinated 5s timer. Worktree git status (dirty, ahead/behind) updates in real time and persists to DB. Window badges derive from pane state. StatusAggregator provides pure aggregation logic with priority ordering. Sidebar views render status badges.
+
+### What was done
+
+1. **StatusAggregator** (MoriCore) — Pure-logic enum with static methods for worktree-level aggregation (window badges + git dirty), project-level aggregation (max priority), unread count summation, and window badge derivation. AlertState extended with `.dirty`, `.unread`, `.waiting` cases and `Comparable` conformance for priority ordering: error > waiting > warning > unread > dirty > info > none.
+2. **GitStatusCoordinator** (app target) — `@MainActor` class that runs `gitBackend.status()` concurrently for all active worktrees via `TaskGroup`. Returns `[UUID: GitStatusInfo]` map. Skips `.unavailable` worktrees.
+3. **Coordinated polling timer** — WorkspaceManager now owns the 5s polling loop, replacing TmuxBackend's self-managed polling. Each tick runs `tmuxBackend.scanAll()` and `gitStatusCoordinator.pollAll()` concurrently via `async let`, then updates runtime state, git status fields, and aggregated badges. AppDelegate calls `startPolling()`/`stopPolling()`.
+4. **Worktree git status update** — `updateWorktreeGitStatus()` sets `hasUncommittedChanges`, `aheadCount`, `behindCount` from polled `GitStatusInfo` and persists changes to DB.
+5. **Window badge derivation** — `StatusAggregator.windowBadge(hasUnreadOutput:)` maps unread state to `.unread`/`.idle`. Preserves existing unread state across poll cycles for Phase 2.5.
+6. **AppState badge aggregation** — `updateAggregatedBadges()` computes per-project `aggregateAlertState` and `aggregateUnreadCount` from worktree-level badges and persists to DB.
+7. **Badge rendering** — WorktreeRowView shows orange dirty dot, green ahead arrow+count, red behind arrow+count, blue unread capsule. WindowRowView shows colored dots for unread/error/running/waiting badges.
+8. **Tests** — 104 MoriCore assertions (up from 67): StatusAggregator window badge derivation, AlertState mapping, worktree/project aggregation, Comparable ordering, Codable round-trip for new cases.
+
+### Build verification
+
+- `swift build` from root: **clean, zero warnings**
+- MoriCore tests: **104/104 assertions passed**
+- MoriPersistence tests: **42/42 assertions passed**
+- MoriTmux tests: **105/105 assertions passed**
+- MoriGit tests: **99/99 assertions passed**
+
+### Commits (5)
+
+- `8611f44` — feat: add StatusAggregator and extend AlertState with priority ordering
+- `6df3bb0` — feat: add GitStatusCoordinator for concurrent git status polling
+- `73987a3` — feat: add coordinated polling timer in WorkspaceManager
+- `529f82d` — feat: add window badge derivation from pane state
+- `0bf6089` — feat: add badge rendering in sidebar views
+- `6ee2141` — feat: add StatusAggregator tests (104 assertions passing)
+
+### Key files created/modified
+
+- `Packages/MoriCore/Sources/MoriCore/Models/StatusAggregator.swift` — NEW: pure aggregation logic
+- `Packages/MoriCore/Sources/MoriCore/Models/AlertState.swift` — Extended with dirty/unread/waiting + Comparable
+- `Sources/Mori/App/GitStatusCoordinator.swift` — NEW: concurrent git status polling
+- `Sources/Mori/App/WorkspaceManager.swift` — Coordinated polling, git status updates, badge aggregation
+- `Sources/Mori/App/AppDelegate.swift` — Wired coordinated polling lifecycle
+- `Packages/MoriUI/Sources/MoriUI/WorktreeRowView.swift` — Git status badges
+- `Packages/MoriUI/Sources/MoriUI/WindowRowView.swift` — Window badge indicators
+- `Packages/MoriCore/Tests/MoriCoreTests/main.swift` — StatusAggregator tests
+
+### Ready for Phase 2.5
+
+- Coordinated polling infrastructure is in place; UnreadTracker hooks into `coordinatedPoll()`
+- `updateRuntimeState` preserves `hasUnreadOutput` across cycles — ready for UnreadTracker to set it
+- `StatusAggregator.windowBadge(hasUnreadOutput:)` already maps unread to badge
+- Badge rendering in sidebar is ready for unread indicators
+- `pane_activity` field available on TmuxPane from Phase 2.2
