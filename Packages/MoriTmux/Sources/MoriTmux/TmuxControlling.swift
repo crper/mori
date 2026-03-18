@@ -53,6 +53,13 @@ public protocol TmuxControlling: Sendable {
 
     /// Force all clients to refresh their display.
     func refreshClients() async throws
+
+    /// Capture the visible output of a pane.
+    /// - Parameters:
+    ///   - paneId: The tmux pane ID (e.g. "%0").
+    ///   - lineCount: Number of lines to capture from the end of the pane buffer.
+    /// - Returns: The captured pane output as a string.
+    func capturePaneOutput(paneId: String, lineCount: Int) async throws -> String
 }
 
 // MARK: - Default implementations for future-phase methods
@@ -97,5 +104,9 @@ public extension TmuxControlling {
 
     func refreshClients() async throws {
         throw TmuxError.notYetImplemented("refreshClients")
+    }
+
+    func capturePaneOutput(paneId: String, lineCount: Int) async throws -> String {
+        throw TmuxError.notYetImplemented("capturePaneOutput")
     }
 }

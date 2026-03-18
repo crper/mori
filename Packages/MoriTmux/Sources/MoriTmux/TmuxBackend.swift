@@ -210,6 +210,12 @@ public actor TmuxBackend: TmuxControlling {
         }
     }
 
+    public func capturePaneOutput(paneId: String, lineCount: Int) async throws -> String {
+        try await runner.run(
+            "capture-pane", "-p", "-t", paneId, "-S", "-\(lineCount)"
+        )
+    }
+
     public func refreshClients() async throws {
         // List all connected clients and refresh each one.
         // Bare `refresh-client` with no target only works from inside a tmux session.
