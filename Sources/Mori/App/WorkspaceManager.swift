@@ -35,10 +35,17 @@ final class WorkspaceManager {
     let uiStateRepo: UIStateRepository
     let tmuxBackend: TmuxBackend
     let gitBackend: GitBackend
+    let gitStatusCoordinator: GitStatusCoordinator
 
     /// Callback invoked when the terminal should switch to a different session.
     /// Parameters: (sessionName, workingDirectory)
     var onTerminalSwitch: ((String, String) -> Void)?
+
+    /// Background coordinated polling task handle.
+    private var pollingTask: Task<Void, Never>?
+
+    /// Polling interval in nanoseconds (5 seconds).
+    private let pollingInterval: UInt64 = 5_000_000_000
 
     init(
         appState: AppState,
@@ -54,6 +61,7 @@ final class WorkspaceManager {
         self.uiStateRepo = uiStateRepo
         self.tmuxBackend = tmuxBackend
         self.gitBackend = gitBackend
+        self.gitStatusCoordinator = GitStatusCoordinator(gitBackend: gitBackend)
     }
 
     /// Whether tmux is available on this system.
@@ -457,6 +465,151 @@ final class WorkspaceManager {
     /// Save UI state synchronously — called from applicationWillTerminate.
     func saveUIStateOnTerminate() {
         try? uiStateRepo.save(appState.uiState)
+    }
+
+    // MARK: - Coordinated Polling
+
+    /// Start the coordinated polling timer.
+    /// On each 5s tick, triggers both tmux scan and git status concurrently,
+    /// then updates AppState with results from both.
+    func startPolling() {
+        guard pollingTask == nil else { return }
+        let interval = self.pollingInterval
+        pollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: interval)
+                guard !Task.isCancelled else { break }
+                guard let self else { break }
+                await self.coordinatedPoll()
+            }
+        }
+    }
+
+    /// Stop the coordinated polling timer.
+    func stopPolling() {
+        pollingTask?.cancel()
+        pollingTask = nil
+    }
+
+    /// Perform a single coordinated poll: tmux scan + git status concurrently.
+    func coordinatedPoll() async {
+        // Run tmux scan and git status concurrently
+        async let tmuxResult: [TmuxSession]? = {
+            try? await self.tmuxBackend.scanAll()
+        }()
+        async let gitResult: [UUID: GitStatusInfo] = {
+            await self.gitStatusCoordinator.pollAll(worktrees: self.appState.worktrees)
+        }()
+
+        let sessions = await tmuxResult
+        let gitStatuses = await gitResult
+
+        // Update runtime state from tmux
+        if let sessions {
+            updateRuntimeState(from: sessions)
+        }
+
+        // Update worktree fields from git status
+        updateWorktreeGitStatus(gitStatuses)
+
+        // Aggregate badges and update AppState
+        updateAggregatedBadges()
+    }
+
+    /// Update runtime windows from tmux session data.
+    private func updateRuntimeState(from sessions: [TmuxSession]) {
+        var runtimeWindows: [RuntimeWindow] = []
+
+        for session in sessions where session.isMoriSession {
+            guard let worktree = appState.worktrees.first(where: {
+                $0.tmuxSessionName == session.name
+            }) else { continue }
+
+            for tmuxWindow in session.windows {
+                // Derive badge from unread state (simple for now;
+                // Phase 2.5 will add proper unread tracking via pane_activity)
+                let badge = StatusAggregator.windowBadge(hasUnreadOutput: false)
+
+                let rw = RuntimeWindow(
+                    tmuxWindowId: tmuxWindow.windowId,
+                    worktreeId: worktree.id,
+                    tmuxWindowIndex: tmuxWindow.windowIndex,
+                    title: tmuxWindow.name,
+                    paneCount: tmuxWindow.panes.count,
+                    hasUnreadOutput: false,
+                    badge: badge
+                )
+                runtimeWindows.append(rw)
+            }
+        }
+
+        appState.runtimeWindows = runtimeWindows
+    }
+
+    /// Update worktree git status fields from polled results and persist changes.
+    private func updateWorktreeGitStatus(_ statuses: [UUID: GitStatusInfo]) {
+        for i in appState.worktrees.indices {
+            guard let status = statuses[appState.worktrees[i].id] else { continue }
+            let wt = appState.worktrees[i]
+            let changed = wt.hasUncommittedChanges != status.isDirty
+                || wt.aheadCount != status.ahead
+                || wt.behindCount != status.behind
+
+            if changed {
+                appState.worktrees[i].hasUncommittedChanges = status.isDirty
+                appState.worktrees[i].aheadCount = status.ahead
+                appState.worktrees[i].behindCount = status.behind
+                // Persist to DB
+                try? worktreeRepo.save(appState.worktrees[i])
+            }
+        }
+    }
+
+    /// Aggregate window badges and git status into worktree and project alert states.
+    private func updateAggregatedBadges() {
+        // Per-worktree aggregation
+        for i in appState.worktrees.indices {
+            let worktreeId = appState.worktrees[i].id
+            let windowBadges = appState.runtimeWindows
+                .filter { $0.worktreeId == worktreeId }
+                .compactMap { $0.badge }
+
+            let alertState = StatusAggregator.worktreeAlertState(
+                windowBadges: windowBadges,
+                hasUncommittedChanges: appState.worktrees[i].hasUncommittedChanges
+            )
+            _ = alertState // Worktree doesn't have an alertState field currently;
+            // used at project aggregation level below
+        }
+
+        // Per-project aggregation
+        for i in appState.projects.indices {
+            let projectId = appState.projects[i].id
+            let projectWorktrees = appState.worktrees.filter { $0.projectId == projectId }
+
+            // Gather worktree-level alert states
+            let worktreeAlerts: [AlertState] = projectWorktrees.map { wt in
+                let windowBadges = appState.runtimeWindows
+                    .filter { $0.worktreeId == wt.id }
+                    .compactMap { $0.badge }
+                return StatusAggregator.worktreeAlertState(
+                    windowBadges: windowBadges,
+                    hasUncommittedChanges: wt.hasUncommittedChanges
+                )
+            }
+
+            let unreadCounts = projectWorktrees.map { $0.unreadCount }
+
+            let newAlertState = StatusAggregator.projectAlertState(worktreeStates: worktreeAlerts)
+            let newUnreadCount = StatusAggregator.projectUnreadCount(worktreeUnreadCounts: unreadCounts)
+
+            if appState.projects[i].aggregateAlertState != newAlertState
+                || appState.projects[i].aggregateUnreadCount != newUnreadCount {
+                appState.projects[i].aggregateAlertState = newAlertState
+                appState.projects[i].aggregateUnreadCount = newUnreadCount
+                try? projectRepo.save(appState.projects[i])
+            }
+        }
     }
 
     // MARK: - Launch Restoration (Task 5.2)

@@ -119,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Update window title from current project
         updateWindowTitle()
 
-        // Check tmux availability and start polling
+        // Check tmux availability and start coordinated polling
         Task {
             let tmuxAvailable = await manager.checkTmuxAvailability()
             if !tmuxAvailable {
@@ -127,19 +127,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
 
-            await tmuxBackend.setOnChange { [weak manager] _ in
-                Task { @MainActor in
-                    await manager?.refreshRuntimeState()
-                }
-            }
-            await tmuxBackend.startPolling()
-
             // Initial runtime state load
             await manager.refreshRuntimeState()
+
+            // Start coordinated polling (tmux + git status on each 5s tick)
+            manager.startPolling()
         }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // Stop coordinated polling
+        workspaceManager?.stopPolling()
+
         // Persist UI state before exit
         workspaceManager?.saveUIStateOnTerminate()
 
