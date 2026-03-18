@@ -617,6 +617,199 @@ func testWindowBadgeAgentCompleted() {
     )
 }
 
+// MARK: - RuntimeWindow Enhanced Fields Tests
+
+func testRuntimeWindowEnhancedDefaults() {
+    let win = RuntimeWindow(tmuxWindowId: "@1", worktreeId: UUID())
+    assertFalse(win.isRunning)
+    assertFalse(win.isLongRunning)
+    assertEqual(win.agentState, .none)
+    assertNil(win.lastExitCode)
+}
+
+func testRuntimeWindowEnhancedInit() {
+    let win = RuntimeWindow(
+        tmuxWindowId: "@4",
+        worktreeId: UUID(),
+        title: "agent",
+        tag: .agent,
+        lastExitCode: 1,
+        isRunning: true,
+        isLongRunning: true,
+        agentState: .error
+    )
+    assertTrue(win.isRunning)
+    assertTrue(win.isLongRunning)
+    assertEqual(win.agentState, .error)
+    assertEqual(win.lastExitCode, 1)
+}
+
+func testRuntimeWindowEnhancedCodable() {
+    let win = RuntimeWindow(
+        tmuxWindowId: "@5",
+        worktreeId: UUID(),
+        title: "server",
+        tag: .server,
+        lastExitCode: 42,
+        isRunning: true,
+        isLongRunning: false,
+        agentState: .running
+    )
+    let data = try! JSONEncoder().encode(win)
+    let decoded = try! JSONDecoder().decode(RuntimeWindow.self, from: data)
+    assertEqual(decoded, win)
+    assertEqual(decoded.isRunning, true)
+    assertEqual(decoded.isLongRunning, false)
+    assertEqual(decoded.agentState, .running)
+    assertEqual(decoded.lastExitCode, 42)
+}
+
+// MARK: - Enhanced Status Aggregation Tests
+
+func testWindowBadgeAllInputCombinations() {
+    // Running only -> .running
+    assertEqual(
+        StatusAggregator.windowBadge(
+            hasUnreadOutput: false, isRunning: true, isLongRunning: false,
+            agentState: .none
+        ),
+        .running
+    )
+
+    // LongRunning overrides running
+    assertEqual(
+        StatusAggregator.windowBadge(
+            hasUnreadOutput: false, isRunning: true, isLongRunning: true,
+            agentState: .none
+        ),
+        .longRunning
+    )
+
+    // Agent error overrides everything
+    assertEqual(
+        StatusAggregator.windowBadge(
+            hasUnreadOutput: true, isRunning: true, isLongRunning: true,
+            agentState: .error
+        ),
+        .error
+    )
+
+    // Agent waiting overrides longRunning/running
+    assertEqual(
+        StatusAggregator.windowBadge(
+            hasUnreadOutput: true, isRunning: true, isLongRunning: true,
+            agentState: .waitingForInput
+        ),
+        .waiting
+    )
+
+    // Agent running doesn't override longRunning
+    assertEqual(
+        StatusAggregator.windowBadge(
+            hasUnreadOutput: false, isRunning: true, isLongRunning: true,
+            agentState: .running
+        ),
+        .longRunning
+    )
+
+    // Agent completed alone -> idle
+    assertEqual(
+        StatusAggregator.windowBadge(
+            hasUnreadOutput: false, isRunning: false, isLongRunning: false,
+            agentState: .completed
+        ),
+        .idle
+    )
+
+    // Unread only -> .unread
+    assertEqual(
+        StatusAggregator.windowBadge(
+            hasUnreadOutput: true, isRunning: false, isLongRunning: false,
+            agentState: .none
+        ),
+        .unread
+    )
+
+    // Nothing -> .idle
+    assertEqual(
+        StatusAggregator.windowBadge(
+            hasUnreadOutput: false, isRunning: false, isLongRunning: false,
+            agentState: .none
+        ),
+        .idle
+    )
+}
+
+func testWorktreeAggregationWithRunningErrorLongRunning() {
+    // Worktree with running window -> info alert
+    assertEqual(
+        StatusAggregator.worktreeAlertState(windowBadges: [.running]),
+        .info
+    )
+
+    // Worktree with error window -> error alert
+    assertEqual(
+        StatusAggregator.worktreeAlertState(windowBadges: [.running, .error]),
+        .error
+    )
+
+    // Worktree with longRunning window -> warning alert
+    assertEqual(
+        StatusAggregator.worktreeAlertState(windowBadges: [.longRunning]),
+        .warning
+    )
+
+    // Worktree with mix: error > longRunning > running
+    assertEqual(
+        StatusAggregator.worktreeAlertState(windowBadges: [.running, .longRunning, .error]),
+        .error
+    )
+
+    // longRunning > running (warning > info)
+    assertEqual(
+        StatusAggregator.worktreeAlertState(windowBadges: [.running, .longRunning]),
+        .warning
+    )
+
+    // waiting > longRunning
+    assertEqual(
+        StatusAggregator.worktreeAlertState(windowBadges: [.longRunning, .waiting]),
+        .waiting
+    )
+}
+
+func testAlertStateMappingForLongRunning() {
+    // .longRunning badge maps to .warning AlertState
+    assertEqual(StatusAggregator.alertState(from: .longRunning), .warning)
+
+    // .running badge maps to .info AlertState
+    assertEqual(StatusAggregator.alertState(from: .running), .info)
+
+    // Verify warning sits between unread and waiting in priority
+    assertTrue(AlertState.warning > AlertState.unread)
+    assertTrue(AlertState.waiting > AlertState.warning)
+}
+
+func testWorktreeAggregationWithGitAndRunning() {
+    // Running + dirty: dirty(.dirty) > running(.info)
+    assertEqual(
+        StatusAggregator.worktreeAlertState(
+            windowBadges: [.running],
+            hasUncommittedChanges: true
+        ),
+        .dirty
+    )
+
+    // LongRunning + dirty: longRunning(.warning) > dirty(.dirty)
+    assertEqual(
+        StatusAggregator.worktreeAlertState(
+            windowBadges: [.longRunning],
+            hasUncommittedChanges: true
+        ),
+        .warning
+    )
+}
+
 func testTemplateRegistryTags() {
     // Basic template tags
     assertEqual(TemplateRegistry.basic.windows[0].tag, .shell)
@@ -700,6 +893,15 @@ testAlertStateFromLongRunningBadge()
 testWorktreeAlertStateWithLongRunning()
 testWindowBadgeRicherPriority()
 testWindowBadgeAgentCompleted()
+
+testRuntimeWindowEnhancedDefaults()
+testRuntimeWindowEnhancedInit()
+testRuntimeWindowEnhancedCodable()
+testWindowBadgeAllInputCombinations()
+testWorktreeAggregationWithRunningErrorLongRunning()
+testAlertStateMappingForLongRunning()
+testWorktreeAggregationWithGitAndRunning()
+
 testTemplateRegistryTags()
 
 printResults()
