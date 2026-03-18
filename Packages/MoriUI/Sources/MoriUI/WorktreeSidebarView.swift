@@ -195,15 +195,6 @@ public struct WorktreeSidebarView: View {
                 shortcutIndex: shortcutIndex < 9 ? shortcutIndex + 1 : nil,
                 onSelect: { onSelectWorktree(worktree.id) }
             )
-            .contextMenu {
-                if !worktree.isMainWorktree, let onRemove = onRemoveWorktree {
-                    Button(role: .destructive) {
-                        onRemove(worktree.id)
-                    } label: {
-                        Label("Remove Worktree...", systemImage: "trash")
-                    }
-                }
-            }
 
             // Windows under selected worktree
             if worktree.id == selectedWorktreeId {
@@ -222,6 +213,15 @@ public struct WorktreeSidebarView: View {
             }
         }
         .padding(.horizontal, MoriTokens.Spacing.sm)
+        .contextMenu {
+            if !worktree.isMainWorktree, let onRemove = onRemoveWorktree {
+                Button(role: .destructive) {
+                    onRemove(worktree.id)
+                } label: {
+                    Label("Remove Worktree...", systemImage: "trash")
+                }
+            }
+        }
     }
 
     // MARK: - Branch Name Input
