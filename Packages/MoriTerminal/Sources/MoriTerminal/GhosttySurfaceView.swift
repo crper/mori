@@ -224,12 +224,12 @@ public final class GhosttySurfaceView: NSView {
         guard event.type == .keyDown else { return false }
         guard let surface = ghosttySurface else { return false }
 
-        // Let Cmd+, (Settings) and Cmd+Q (Quit) always pass through to AppKit menus.
-        let cmdOnly = event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
-        if cmdOnly, let chars = event.charactersIgnoringModifiers {
-            if chars == "," || chars == "q" {
-                return false
-            }
+        // If the key event matches any item in Mori's menu bar, let AppKit
+        // handle it so all app shortcuts work (Cmd+D split, Cmd+Shift+D split
+        // down, Cmd+G lazygit, Cmd+, settings, etc.).
+        if let mainMenu = NSApp.mainMenu,
+           Self.menuContainsKeyEquivalent(mainMenu, event: event) {
+            return false
         }
 
         // Check if ghostty considers this a key binding
@@ -364,6 +364,30 @@ public final class GhosttySurfaceView: NSView {
         if flags.contains(.command) { mods |= GHOSTTY_MODS_SUPER.rawValue }
         if flags.contains(.capsLock) { mods |= GHOSTTY_MODS_CAPS.rawValue }
         return ghostty_input_mods_e(rawValue: mods)
+    }
+
+    // MARK: - Menu Key Equivalent Check
+
+    /// Recursively check if any menu item in the hierarchy matches the event's
+    /// key equivalent and modifier mask. Used to let Mori menu shortcuts take
+    /// priority over ghostty keybindings.
+    private static func menuContainsKeyEquivalent(_ menu: NSMenu, event: NSEvent) -> Bool {
+        let eventMods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let eventChars = event.charactersIgnoringModifiers ?? ""
+        guard !eventChars.isEmpty else { return false }
+
+        for item in menu.items {
+            if !item.keyEquivalent.isEmpty,
+               item.keyEquivalent == eventChars,
+               item.keyEquivalentModifierMask == eventMods {
+                return true
+            }
+            if let submenu = item.submenu,
+               menuContainsKeyEquivalent(submenu, event: event) {
+                return true
+            }
+        }
+        return false
     }
 }
 
