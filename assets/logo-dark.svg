@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 80" width="300" height="80">
+  <defs>
+    <linearGradient id="stump" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c4944a"/>
+      <stop offset="100%" stop-color="#8b6834"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#6abf4b"/>
+      <stop offset="100%" stop-color="#3d8c2e"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Mini stump icon -->
+  <g transform="translate(35, 42)">
+    <!-- Stump body -->
+    <rect x="-14" y="0" width="28" height="24" rx="4" fill="url(#stump)"/>
+    <!-- Stump top -->
+    <ellipse cx="0" cy="0" rx="15" ry="5.5" fill="#d4a45a"/>
+    <!-- Sprout -->
+    <line x1="0" y1="0" x2="0" y2="-22" stroke="#5a9040" stroke-width="3" stroke-linecap="round"/>
+    <!-- Left leaf -->
+    <path d="M-1 -14 C-5 -20, -14 -26, -17 -28 C-18 -27, -16 -24, -12 -21 C-8 -18, -3 -15, -1 -13 Z" fill="url(#leaf)"/>
+    <!-- Right leaf -->
+    <path d="M1 -18 C5 -24, 13 -28, 16 -30 C17 -29, 15 -26, 11 -23 C8 -20, 3 -18, 1 -17 Z" fill="#5aaf3b"/>
+    <!-- Top leaf -->
+    <ellipse cx="0" cy="-24" rx="3.5" ry="5" fill="#6abf4b" transform="rotate(-5 0 -24)"/>
+    <!-- Eyes -->
+    <circle cx="-5" cy="9" r="2.2" fill="#3a2a15"/>
+    <circle cx="5" cy="9" r="2.2" fill="#3a2a15"/>
+    <circle cx="-4.3" cy="8.2" r="0.9" fill="white" opacity="0.7"/>
+    <circle cx="5.7" cy="8.2" r="0.9" fill="white" opacity="0.7"/>
+    <!-- Smile -->
+    <path d="M-3 14 Q0 17.5 3 14" stroke="#3a2a15" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- "Mori" text -->
+  <text x="72" y="55" font-family="'SF Pro Rounded', 'Nunito', 'Quicksand', -apple-system, system-ui, sans-serif" font-size="42" font-weight="700" fill="#e8e8e8" letter-spacing="-1">
+    Mori
+  </text>
+</svg>

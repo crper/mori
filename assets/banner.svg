@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" width="1200" height="400">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3a6e2a"/>
+      <stop offset="50%" stop-color="#2d5a27"/>
+      <stop offset="100%" stop-color="#1f4a1a"/>
+    </linearGradient>
+    <linearGradient id="stump" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c4944a"/>
+      <stop offset="100%" stop-color="#8b6834"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#6abf4b"/>
+      <stop offset="100%" stop-color="#3d8c2e"/>
+    </linearGradient>
+    <linearGradient id="leaf2" x1="0" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#5aaf3b"/>
+      <stop offset="100%" stop-color="#2d7c1e"/>
+    </linearGradient>
+    <linearGradient id="textGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#d0e8c0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="400" rx="20" ry="20" fill="url(#bg)"/>
+
+  <!-- Decorative forest silhouettes (background) -->
+  <!-- Far trees -->
+  <path d="M50 400 L80 180 L110 400 Z" fill="#2a5520" opacity="0.3"/>
+  <path d="M90 400 L130 150 L170 400 Z" fill="#2a5520" opacity="0.25"/>
+  <path d="M160 400 L185 200 L210 400 Z" fill="#2a5520" opacity="0.2"/>
+  <path d="M1020 400 L1050 190 L1080 400 Z" fill="#2a5520" opacity="0.25"/>
+  <path d="M1060 400 L1100 160 L1140 400 Z" fill="#2a5520" opacity="0.3"/>
+  <path d="M1110 400 L1140 210 L1170 400 Z" fill="#2a5520" opacity="0.2"/>
+
+  <!-- Ground line -->
+  <ellipse cx="350" cy="345" rx="160" ry="25" fill="rgba(0,0,0,0.12)"/>
+
+  <!-- Grass -->
+  <ellipse cx="280" cy="335" rx="18" ry="11" fill="#4a8f35" opacity="0.7"/>
+  <ellipse cx="315" cy="338" rx="15" ry="9" fill="#55a03e" opacity="0.7"/>
+  <ellipse cx="385" cy="337" rx="17" ry="10" fill="#4a8f35" opacity="0.7"/>
+  <ellipse cx="420" cy="335" rx="14" ry="8" fill="#55a03e" opacity="0.7"/>
+  <ellipse cx="350" cy="340" rx="22" ry="11" fill="#509839" opacity="0.7"/>
+
+  <!-- Stump character (left side) -->
+  <g transform="translate(350, 200)">
+    <!-- Stump body -->
+    <path d="M-55 0 C-58 0, -63 8, -65 30 C-67 60, -66 80, -62 92 C-59 97, 59 97, 62 92 C66 80, 67 60, 65 30 C63 8, 58 0, 55 0 Z" fill="url(#stump)"/>
+
+    <!-- Wood grain -->
+    <path d="M-42 25 Q0 28 42 25" stroke="#a07830" stroke-width="1.5" fill="none" opacity="0.4"/>
+    <path d="M-45 50 Q0 53 45 50" stroke="#a07830" stroke-width="1.5" fill="none" opacity="0.35"/>
+    <path d="M-48 72 Q0 75 48 72" stroke="#a07830" stroke-width="1.5" fill="none" opacity="0.3"/>
+
+    <!-- Stump top -->
+    <ellipse cx="0" cy="0" rx="56" ry="20" fill="#d4a45a"/>
+    <ellipse cx="0" cy="0" rx="36" ry="12" fill="none" stroke="#b8884a" stroke-width="1.5" opacity="0.4"/>
+    <ellipse cx="0" cy="0" rx="20" ry="7" fill="none" stroke="#b8884a" stroke-width="1" opacity="0.3"/>
+
+    <!-- Sprout -->
+    <path d="M0 0 C0 -15, -3 -38, -5 -52 C-7 -68, 0 -85, 0 -100" stroke="#5a9040" stroke-width="5" fill="none" stroke-linecap="round"/>
+
+    <!-- Left leaf -->
+    <path d="M-4 -60 C-12 -75, -35 -95, -45 -103 C-49 -106, -45 -110, -38 -107 C-25 -104, -8 -86, -4 -65 Z" fill="url(#leaf)"/>
+    <path d="M-5 -65 C-13 -78, -28 -92, -38 -100" stroke="#3d8c2e" stroke-width="1.2" fill="none" opacity="0.4"/>
+
+    <!-- Right leaf -->
+    <path d="M3 -75 C11 -90, 32 -105, 42 -110 C47 -112, 50 -108, 45 -104 C36 -98, 15 -85, 5 -72 Z" fill="url(#leaf2)"/>
+    <path d="M4 -73 C12 -84, 28 -96, 39 -102" stroke="#2d7c1e" stroke-width="1.2" fill="none" opacity="0.4"/>
+
+    <!-- Top leaves -->
+    <path d="M0 -100 C-3 -110, -9 -120, -12 -125 C-13 -128, -10 -129, -7 -126 C-3 -122, -1 -110, 0 -102 Z" fill="#6abf4b"/>
+    <path d="M0 -100 C3 -110, 9 -118, 12 -122 C14 -124, 11 -127, 9 -123 C5 -119, 1 -108, 0 -102 Z" fill="#5aaf3b"/>
+
+    <!-- Eyes -->
+    <ellipse cx="-16" cy="40" rx="7" ry="9" fill="#3a2a15"/>
+    <ellipse cx="16" cy="40" rx="7" ry="9" fill="#3a2a15"/>
+    <ellipse cx="-14" cy="37" rx="2.5" ry="3.5" fill="white" opacity="0.8"/>
+    <ellipse cx="18" cy="37" rx="2.5" ry="3.5" fill="white" opacity="0.8"/>
+
+    <!-- Smile -->
+    <path d="M-10 56 Q0 70 10 56" stroke="#3a2a15" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+
+    <!-- Blush -->
+    <ellipse cx="-26" cy="54" rx="10" ry="6" fill="#e88" opacity="0.3"/>
+    <ellipse cx="26" cy="54" rx="10" ry="6" fill="#e88" opacity="0.3"/>
+  </g>
+
+  <!-- Text: Mori -->
+  <text x="650" y="185" font-family="'SF Pro Rounded', 'Nunito', 'Quicksand', -apple-system, system-ui, sans-serif" font-size="120" font-weight="800" fill="url(#textGrad)" letter-spacing="-2">
+    Mori
+  </text>
+
+  <!-- Tagline -->
+  <text x="655" y="235" font-family="'SF Pro Text', 'Inter', -apple-system, system-ui, sans-serif" font-size="26" font-weight="400" fill="#a8d490" letter-spacing="1" opacity="0.9">
+    Workspace Terminal for macOS
+  </text>
+
+  <!-- Subtle terminal prompt hint -->
+  <text x="655" y="280" font-family="'SF Mono', 'JetBrains Mono', 'Fira Code', monospace" font-size="18" fill="#7ab868" opacity="0.6">
+    $ projects &middot; worktrees &middot; tmux
+  </text>
+</svg>

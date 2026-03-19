@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5a9445"/>
+      <stop offset="100%" stop-color="#3a6e2a"/>
+    </linearGradient>
+    <linearGradient id="stump" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c4944a"/>
+      <stop offset="100%" stop-color="#8b6834"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#6abf4b"/>
+      <stop offset="100%" stop-color="#3d8c2e"/>
+    </linearGradient>
+    <linearGradient id="leaf2" x1="0" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#5aaf3b"/>
+      <stop offset="100%" stop-color="#2d7c1e"/>
+    </linearGradient>
+    <clipPath id="circle">
+      <circle cx="200" cy="200" r="200"/>
+    </clipPath>
+  </defs>
+
+  <!-- Circular crop -->
+  <g clip-path="url(#circle)">
+    <!-- Background -->
+    <rect width="400" height="400" fill="url(#bg)"/>
+
+    <!-- Ground shadow -->
+    <ellipse cx="200" cy="310" rx="110" ry="20" fill="rgba(0,0,0,0.15)"/>
+
+    <!-- Grass bumps -->
+    <ellipse cx="145" cy="298" rx="16" ry="10" fill="#4a8f35"/>
+    <ellipse cx="175" cy="302" rx="14" ry="9" fill="#55a03e"/>
+    <ellipse cx="225" cy="300" rx="16" ry="10" fill="#4a8f35"/>
+    <ellipse cx="258" cy="298" rx="13" ry="8" fill="#55a03e"/>
+    <ellipse cx="200" cy="304" rx="20" ry="10" fill="#509839"/>
+
+    <!-- Stump body -->
+    <path d="M155 200 C152 200, 147 208, 145 230 C143 260, 144 282, 149 295 C152 300, 248 300, 251 295 C256 282, 258 260, 256 230 C254 208, 249 200, 246 200 Z" fill="url(#stump)"/>
+
+    <!-- Wood grain -->
+    <path d="M165 225 Q200 229 235 225" stroke="#a07830" stroke-width="1.5" fill="none" opacity="0.4"/>
+    <path d="M162 250 Q200 254 238 250" stroke="#a07830" stroke-width="1.5" fill="none" opacity="0.35"/>
+    <path d="M158 275 Q200 279 242 275" stroke="#a07830" stroke-width="1.5" fill="none" opacity="0.3"/>
+
+    <!-- Stump top -->
+    <ellipse cx="200" cy="200" rx="48" ry="17" fill="#d4a45a"/>
+    <ellipse cx="200" cy="200" rx="32" ry="11" fill="none" stroke="#b8884a" stroke-width="1.5" opacity="0.4"/>
+    <ellipse cx="200" cy="200" rx="17" ry="6" fill="none" stroke="#b8884a" stroke-width="1" opacity="0.3"/>
+
+    <!-- Sprout -->
+    <path d="M200 200 C200 185, 197 162, 195 148 C193 132, 200 115, 200 100" stroke="#5a9040" stroke-width="5" fill="none" stroke-linecap="round"/>
+
+    <!-- Left leaf -->
+    <path d="M196 140 C188 125, 165 105, 155 97 C151 94, 155 90, 162 93 C175 96, 192 114, 196 135 Z" fill="url(#leaf)"/>
+    <path d="M195 135 C187 122, 172 108, 162 100" stroke="#3d8c2e" stroke-width="1.2" fill="none" opacity="0.4"/>
+
+    <!-- Right leaf -->
+    <path d="M203 125 C211 110, 232 95, 242 90 C247 88, 250 92, 245 96 C236 102, 215 115, 205 128 Z" fill="url(#leaf2)"/>
+    <path d="M204 123 C212 112, 228 100, 239 94" stroke="#2d7c1e" stroke-width="1.2" fill="none" opacity="0.4"/>
+
+    <!-- Top leaves -->
+    <path d="M200 100 C197 90, 191 80, 188 75 C187 72, 190 71, 193 74 C197 78, 199 90, 200 98 Z" fill="#6abf4b"/>
+    <path d="M200 100 C203 90, 209 82, 212 78 C214 76, 211 73, 209 77 C205 81, 201 92, 200 98 Z" fill="#5aaf3b"/>
+
+    <!-- Eyes -->
+    <ellipse cx="184" cy="242" rx="6" ry="8" fill="#3a2a15"/>
+    <ellipse cx="216" cy="242" rx="6" ry="8" fill="#3a2a15"/>
+    <ellipse cx="186" cy="239" rx="2.5" ry="3" fill="white" opacity="0.8"/>
+    <ellipse cx="218" cy="239" rx="2.5" ry="3" fill="white" opacity="0.8"/>
+
+    <!-- Smile -->
+    <path d="M189 258 Q200 272 211 258" stroke="#3a2a15" stroke-width="3" fill="none" stroke-linecap="round"/>
+
+    <!-- Blush -->
+    <ellipse cx="174" cy="256" rx="9" ry="6" fill="#e88" opacity="0.3"/>
+    <ellipse cx="226" cy="256" rx="9" ry="6" fill="#e88" opacity="0.3"/>
+  </g>
+
+  <!-- Circle border -->
+  <circle cx="200" cy="200" r="198" fill="none" stroke="white" stroke-width="4" opacity="0.3"/>
+</svg>

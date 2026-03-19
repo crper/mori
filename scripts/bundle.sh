@@ -6,8 +6,8 @@ BUNDLE_ID="dev.mori.app"
 BUILD_DIR=".build/release"
 APP_BUNDLE="${APP_NAME}.app"
 
-# Build release
-swift build -c release 2>&1 | xcbeautify
+# Build release (GUI target only — "Mori" and "mori" collide on case-insensitive FS)
+swift build -c release --product Mori 2>&1 | xcbeautify
 
 # Create .app structure
 rm -rf "$APP_BUNDLE"
@@ -16,6 +16,9 @@ mkdir -p "$APP_BUNDLE/Contents/Resources"
 
 # Copy executable
 cp "$BUILD_DIR/$APP_NAME" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+
+# Copy app icon
+cp "assets/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 
 # Create Info.plist
 cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
@@ -46,6 +49,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
     <true/>
     <key>NSSupportsAutomaticTermination</key>
     <false/>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
 </dict>
