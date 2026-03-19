@@ -11,14 +11,17 @@ let package = Package(
         .library(name: "MoriTerminal", targets: ["MoriTerminal"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", from: "1.2.0"),
         .package(path: "../MoriCore"),
     ],
     targets: [
         .target(
             name: "MoriTerminal",
-            dependencies: ["SwiftTerm", "MoriCore"],
+            dependencies: ["MoriCore", "GhosttyKit"],
             path: "Sources/MoriTerminal"
+        ),
+        .binaryTarget(
+            name: "GhosttyKit",
+            path: "../../Frameworks/GhosttyKit.xcframework"
         ),
     ]
 )
