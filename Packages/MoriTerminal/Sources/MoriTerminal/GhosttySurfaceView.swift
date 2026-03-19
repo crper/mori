@@ -224,6 +224,14 @@ public final class GhosttySurfaceView: NSView {
         guard event.type == .keyDown else { return false }
         guard let surface = ghosttySurface else { return false }
 
+        // Let Cmd+, (Settings) and Cmd+Q (Quit) always pass through to AppKit menus.
+        let cmdOnly = event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
+        if cmdOnly, let chars = event.charactersIgnoringModifiers {
+            if chars == "," || chars == "q" {
+                return false
+            }
+        }
+
         // Check if ghostty considers this a key binding
         var ghosttyEvent = ghosttyKeyEvent(GHOSTTY_ACTION_PRESS, event: event)
         let text = event.characters ?? ""

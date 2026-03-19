@@ -315,6 +315,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             backgroundOpacity: Double(cf.get("background-opacity") ?? "1.0") ?? 1.0,
             macosOptionAsAlt: cf.get("macos-option-as-alt") ?? "false",
             mouseHideWhileTyping: cf.get("mouse-hide-while-typing") == "true",
+            mouseScrollMultiplier: Int(cf.get("mouse-scroll-multiplier") ?? "") ?? 1,
             copyOnSelect: cf.get("copy-on-select") ?? "false",
             windowPaddingBalance: cf.get("window-padding-balance") == "true",
             keybinds: cf.getAll("keybind")
@@ -340,6 +341,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         cf.set("background-opacity", value: String(format: "%.2f", model.backgroundOpacity))
         cf.set("macos-option-as-alt", value: model.macosOptionAsAlt)
         cf.set("mouse-hide-while-typing", value: model.mouseHideWhileTyping ? "true" : "false")
+        cf.set("mouse-scroll-multiplier", value: "\(model.mouseScrollMultiplier)")
         cf.set("copy-on-select", value: model.copyOnSelect)
         cf.set("window-padding-balance", value: model.windowPaddingBalance ? "true" : "false")
     }
