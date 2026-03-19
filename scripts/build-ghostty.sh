@@ -5,20 +5,27 @@
 # Usage: bash scripts/build-ghostty.sh [--clean]
 set -euo pipefail
 
-GHOSTTY_COMMIT="c9e1006213eb9234209924c91285d6863e59ce4c"
-GHOSTTY_DIR="${TMPDIR:-/tmp}/ghostty-build"
-FRAMEWORK_DIR="$(cd "$(dirname "$0")/.." && pwd)/Frameworks"
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+GHOSTTY_DIR="$PROJECT_ROOT/vendor/ghostty"
+FRAMEWORK_DIR="$PROJECT_ROOT/Frameworks"
 XCFRAMEWORK="$FRAMEWORK_DIR/GhosttyKit.xcframework"
+RESOURCES_DIR="$FRAMEWORK_DIR/ghostty-resources"
 
-# Clean mode: remove cached clone and rebuilt
+# Clean mode: remove built artifacts
 if [[ "${1:-}" == "--clean" ]]; then
-    echo "Cleaning Ghostty build cache..."
-    rm -rf "$GHOSTTY_DIR" "$XCFRAMEWORK"
+    echo "Cleaning Ghostty build artifacts..."
+    rm -rf "$XCFRAMEWORK" "$RESOURCES_DIR"
+fi
+
+# Check submodule is initialized
+if [[ ! -f "$GHOSTTY_DIR/build.zig" ]]; then
+    echo "Initializing ghostty submodule..."
+    git -C "$PROJECT_ROOT" submodule update --init vendor/ghostty
 fi
 
 # Skip if already built
-if [[ -d "$XCFRAMEWORK" ]]; then
-    echo "GhosttyKit.xcframework already exists at $XCFRAMEWORK"
+if [[ -d "$XCFRAMEWORK" && -d "$RESOURCES_DIR" ]]; then
+    echo "GhosttyKit.xcframework and resources already exist at $FRAMEWORK_DIR"
     echo "Run with --clean to rebuild."
     exit 0
 fi
@@ -32,18 +39,7 @@ fi
 ZIG_VERSION=$(zig version)
 echo "Using Zig $ZIG_VERSION"
 
-# Clone or update Ghostty
-if [[ -d "$GHOSTTY_DIR/.git" ]]; then
-    echo "Using existing Ghostty clone at $GHOSTTY_DIR"
-    cd "$GHOSTTY_DIR"
-    git fetch origin
-    git checkout "$GHOSTTY_COMMIT"
-else
-    echo "Cloning Ghostty..."
-    git clone https://github.com/ghostty-org/ghostty.git "$GHOSTTY_DIR"
-    cd "$GHOSTTY_DIR"
-    git checkout "$GHOSTTY_COMMIT"
-fi
+cd "$GHOSTTY_DIR"
 
 # Patch: skip iOS/iOS Simulator builds when using native target.
 # Ghostty's GhosttyXCFramework.zig eagerly initializes iOS targets even
@@ -178,7 +174,7 @@ if [[ ! -d "$BUILD_OUTPUT" ]]; then
     exit 1
 fi
 
-# Copy to project Frameworks directory
+# Copy XCFramework to project Frameworks directory
 mkdir -p "$FRAMEWORK_DIR"
 rm -rf "$XCFRAMEWORK"
 cp -R "$BUILD_OUTPUT" "$XCFRAMEWORK"
@@ -186,3 +182,16 @@ cp -R "$BUILD_OUTPUT" "$XCFRAMEWORK"
 echo "GhosttyKit.xcframework built successfully at $XCFRAMEWORK"
 # Show module map to confirm structure
 find "$XCFRAMEWORK" -name "module.modulemap" -exec echo "Module map:" \; -exec cat {} \; 2>/dev/null || true
+
+# Copy resources (terminfo + themes + shell-integration) for app bundling
+SHARE_DIR="$GHOSTTY_DIR/zig-out/share"
+if [[ -d "$SHARE_DIR" ]]; then
+    rm -rf "$RESOURCES_DIR"
+    mkdir -p "$RESOURCES_DIR"
+    cp -R "$SHARE_DIR/"* "$RESOURCES_DIR/"
+    echo "Ghostty resources copied to $RESOURCES_DIR"
+    echo "  themes: $(ls "$RESOURCES_DIR/ghostty/themes/" 2>/dev/null | wc -l | tr -d ' ') files"
+else
+    echo "Warning: zig-out/share not found — resources not copied."
+    echo "Theme resolution may not work in bundled .app builds."
+fi

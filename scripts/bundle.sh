@@ -20,6 +20,18 @@ cp "$BUILD_DIR/$APP_NAME" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 # Copy app icon
 cp "assets/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 
+# Copy ghostty resources (terminfo sentinel + themes) so libghostty can resolve
+# its resources_dir from the app bundle. Ghostty walks up from the executable
+# looking for Contents/Resources/terminfo/78/xterm-ghostty as a sentinel.
+GHOSTTY_RESOURCES="Frameworks/ghostty-resources"
+if [[ -d "$GHOSTTY_RESOURCES" ]]; then
+    cp -R "$GHOSTTY_RESOURCES/"* "$APP_BUNDLE/Contents/Resources/"
+    echo "   Ghostty resources bundled (themes, terminfo, shell-integration)"
+else
+    echo "⚠️  Warning: $GHOSTTY_RESOURCES not found. Run 'mise run build:ghostty' first."
+    echo "   Theme resolution will not work in the bundled app."
+fi
+
 # Create Info.plist
 cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
