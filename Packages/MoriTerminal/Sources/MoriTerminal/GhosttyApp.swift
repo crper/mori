@@ -1,6 +1,39 @@
 import AppKit
 import GhosttyKit
 
+/// Actions that Mori intercepts from ghostty keybindings.
+/// Ghostty maps keys to these intents; Mori provides the tmux implementation.
+public enum GhosttyAppAction: Sendable {
+    case newTab
+    case closeTab
+    case gotoTab(GotoTab)
+    case newSplit(SplitDirection)
+    case gotoSplit(GotoSplit)
+    case resizeSplit(ResizeSplit, amount: UInt16)
+    case equalizeSplits
+    case toggleSplitZoom
+    case newWindow
+    case closeWindow
+    case openConfig
+    case toggleFullscreen
+
+    public enum GotoTab: Sendable {
+        case previous, next, last, index(Int)
+    }
+
+    public enum SplitDirection: Sendable {
+        case right, down, left, up
+    }
+
+    public enum GotoSplit: Sendable {
+        case previous, next, up, down, left, right
+    }
+
+    public enum ResizeSplit: Sendable {
+        case up, down, left, right
+    }
+}
+
 /// Sendable wrapper for raw pointers crossing isolation boundaries in C callbacks.
 private struct SendableRawPointer: @unchecked Sendable {
     let pointer: UnsafeMutableRawPointer
@@ -24,6 +57,10 @@ final class GhosttyApp {
 
     /// Theme colors resolved from the ghostty config at startup.
     private(set) var themeInfo: GhosttyThemeInfo = .fallback
+
+    /// Callback for ghostty actions that Mori intercepts (tabs, splits, etc.).
+    /// Set by the app target to redirect ghostty intents to WorkspaceManager/tmux.
+    var actionHandler: (@MainActor (GhosttyAppAction) -> Void)?
 
     private init() {}
 
@@ -165,7 +202,75 @@ final class GhosttyApp {
         target: ghostty_target_s,
         action: ghostty_action_s
     ) -> Bool {
-        return false
+        let moriAction: GhosttyAppAction
+        switch action.tag {
+        case GHOSTTY_ACTION_NEW_TAB:
+            moriAction = .newTab
+        case GHOSTTY_ACTION_CLOSE_TAB:
+            moriAction = .closeTab
+        case GHOSTTY_ACTION_GOTO_TAB:
+            let raw = action.action.goto_tab
+            switch raw {
+            case GHOSTTY_GOTO_TAB_PREVIOUS: moriAction = .gotoTab(.previous)
+            case GHOSTTY_GOTO_TAB_NEXT: moriAction = .gotoTab(.next)
+            case GHOSTTY_GOTO_TAB_LAST: moriAction = .gotoTab(.last)
+            default:
+                // Positive raw values are 1-based tab indices
+                let index = Int(raw.rawValue)
+                guard index > 0 else { return false }
+                moriAction = .gotoTab(.index(index))
+            }
+        case GHOSTTY_ACTION_NEW_SPLIT:
+            switch action.action.new_split {
+            case GHOSTTY_SPLIT_DIRECTION_RIGHT: moriAction = .newSplit(.right)
+            case GHOSTTY_SPLIT_DIRECTION_DOWN: moriAction = .newSplit(.down)
+            case GHOSTTY_SPLIT_DIRECTION_LEFT: moriAction = .newSplit(.left)
+            case GHOSTTY_SPLIT_DIRECTION_UP: moriAction = .newSplit(.up)
+            default: return false
+            }
+        case GHOSTTY_ACTION_GOTO_SPLIT:
+            switch action.action.goto_split {
+            case GHOSTTY_GOTO_SPLIT_PREVIOUS: moriAction = .gotoSplit(.previous)
+            case GHOSTTY_GOTO_SPLIT_NEXT: moriAction = .gotoSplit(.next)
+            case GHOSTTY_GOTO_SPLIT_UP: moriAction = .gotoSplit(.up)
+            case GHOSTTY_GOTO_SPLIT_DOWN: moriAction = .gotoSplit(.down)
+            case GHOSTTY_GOTO_SPLIT_LEFT: moriAction = .gotoSplit(.left)
+            case GHOSTTY_GOTO_SPLIT_RIGHT: moriAction = .gotoSplit(.right)
+            default: return false
+            }
+        case GHOSTTY_ACTION_RESIZE_SPLIT:
+            let rs = action.action.resize_split
+            let dir: GhosttyAppAction.ResizeSplit
+            switch rs.direction {
+            case GHOSTTY_RESIZE_SPLIT_UP: dir = .up
+            case GHOSTTY_RESIZE_SPLIT_DOWN: dir = .down
+            case GHOSTTY_RESIZE_SPLIT_LEFT: dir = .left
+            case GHOSTTY_RESIZE_SPLIT_RIGHT: dir = .right
+            default: return false
+            }
+            moriAction = .resizeSplit(dir, amount: rs.amount)
+        case GHOSTTY_ACTION_EQUALIZE_SPLITS:
+            moriAction = .equalizeSplits
+        case GHOSTTY_ACTION_TOGGLE_SPLIT_ZOOM:
+            moriAction = .toggleSplitZoom
+        case GHOSTTY_ACTION_NEW_WINDOW:
+            moriAction = .newWindow
+        case GHOSTTY_ACTION_CLOSE_WINDOW:
+            moriAction = .closeWindow
+        case GHOSTTY_ACTION_OPEN_CONFIG:
+            moriAction = .openConfig
+        case GHOSTTY_ACTION_TOGGLE_FULLSCREEN:
+            moriAction = .toggleFullscreen
+        default:
+            return false
+        }
+
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                GhosttyApp.shared.actionHandler?(moriAction)
+            }
+        }
+        return true
     }
 
     private nonisolated static func onReadClipboard(

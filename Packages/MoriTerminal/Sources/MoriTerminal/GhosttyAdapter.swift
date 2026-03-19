@@ -20,6 +20,14 @@ public final class GhosttyAdapter: TerminalHost {
         GhosttyApp.shared.start()
     }
 
+    /// Set a handler for ghostty keybinding actions (tabs, splits, etc.).
+    /// Ghostty maps keys to abstract intents; the handler provides the
+    /// implementation (e.g., tmux windows instead of ghostty-native tabs).
+    public var actionHandler: (@MainActor (GhosttyAppAction) -> Void)? {
+        get { GhosttyApp.shared.actionHandler }
+        set { GhosttyApp.shared.actionHandler = newValue }
+    }
+
     /// Reload ghostty config from disk and update all surfaces.
     /// Call after writing changes to ~/.config/ghostty/config.
     public func reloadConfig() {

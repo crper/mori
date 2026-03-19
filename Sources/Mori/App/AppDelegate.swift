@@ -82,6 +82,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
         self.terminalAreaController = terminalArea
 
+        // Wire ghostty keybinding actions to Mori's tmux-based implementation.
+        // Ghostty maps keys to intents (new_tab, close_tab, etc.); Mori provides
+        // the tmux backend. Users can customize keybindings via ghostty config.
+        if let adapter = terminalArea.terminalHost as? GhosttyAdapter {
+            adapter.actionHandler = { [weak self] action in
+                self?.handleGhosttyAction(action)
+            }
+        }
+
         let themeInfo = terminalArea.themeInfo
 
         // Build the window with ghostty theme
@@ -637,6 +646,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     @objc private func resizePaneRightMenuAction() {
         guard let manager = workspaceManager else { return }
         Task { @MainActor in await manager.resizePane(direction: .right) }
+    }
+
+    // MARK: - Ghostty Action Handler
+
+    /// Handle ghostty keybinding actions by redirecting to tmux via WorkspaceManager.
+    /// Ghostty maps keys to abstract intents; this method provides the tmux implementation.
+    private func handleGhosttyAction(_ action: GhosttyAppAction) {
+        guard let manager = workspaceManager else { return }
+        switch action {
+        case .newTab:
+            Task { await manager.createNewWindow() }
+        case .closeTab:
+            Task { await manager.closeCurrentWindow() }
+        case .gotoTab(let target):
+            switch target {
+            case .previous: manager.previousWindow()
+            case .next: manager.nextWindow()
+            case .last: manager.selectWindowByIndex(9)
+            case .index(let n): manager.selectWindowByIndex(n)
+            }
+        case .newSplit(let dir):
+            let horizontal = (dir == .right || dir == .left)
+            Task { await manager.splitCurrentPane(horizontal: horizontal) }
+        case .gotoSplit(let dir):
+            let paneDir: PaneDirection
+            switch dir {
+            case .previous: paneDir = .previous
+            case .next: paneDir = .next
+            case .up: paneDir = .up
+            case .down: paneDir = .down
+            case .left: paneDir = .left
+            case .right: paneDir = .right
+            }
+            Task { await manager.navigatePane(direction: paneDir) }
+        case .resizeSplit(let dir, let amount):
+            let paneDir: PaneDirection
+            switch dir {
+            case .up: paneDir = .up
+            case .down: paneDir = .down
+            case .left: paneDir = .left
+            case .right: paneDir = .right
+            }
+            Task { await manager.resizePane(direction: paneDir, amount: Int(amount)) }
+        case .equalizeSplits:
+            Task { await manager.equalizePanes() }
+        case .toggleSplitZoom:
+            Task { await manager.togglePaneZoom() }
+        case .newWindow:
+            // Mori manages its own windows — ignore ghostty's new_window
+            break
+        case .closeWindow:
+            mainWindowController?.window?.close()
+        case .openConfig:
+            showSettingsWindow()
+        case .toggleFullscreen:
+            mainWindowController?.window?.toggleFullScreen(nil)
+        }
     }
 
     // MARK: - Tmux Missing Alert (Task 5.3)

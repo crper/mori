@@ -224,15 +224,20 @@ public final class GhosttySurfaceView: NSView {
         guard event.type == .keyDown else { return false }
         guard let surface = ghosttySurface else { return false }
 
-        // If the key event matches any item in Mori's menu bar, let AppKit
-        // handle it so all app shortcuts work (Cmd+D split, Cmd+Shift+D split
-        // down, Cmd+G lazygit, Cmd+, settings, etc.).
+        // 1. Let Mori's menu bar handle any matching key equivalent first.
+        //    NSMenu's own matching correctly handles Shift+symbol mapping,
+        //    case sensitivity, and modifier flags — no manual comparison needed.
+        //    This ensures Mori-specific shortcuts (Cmd+G lazygit, Cmd+E yazi,
+        //    Cmd+0 sidebar, etc.) always take priority.
         if let mainMenu = NSApp.mainMenu,
-           Self.menuContainsKeyEquivalent(mainMenu, event: event) {
-            return false
+           mainMenu.performKeyEquivalent(with: event) {
+            return true
         }
 
-        // Check if ghostty considers this a key binding
+        // 2. Check if ghostty considers this a key binding. Ghostty handles
+        //    key-to-action mapping and fires actions via the runtime callback.
+        //    Mori intercepts those actions in GhosttyApp.onAction to redirect
+        //    to tmux. This lets users add custom keybindings via ghostty config.
         var ghosttyEvent = ghosttyKeyEvent(GHOSTTY_ACTION_PRESS, event: event)
         let text = event.characters ?? ""
         let isBinding = text.withCString { ptr in
@@ -241,7 +246,6 @@ public final class GhosttySurfaceView: NSView {
             return ghostty_surface_key_is_binding(surface, ghosttyEvent, &flags)
         }
 
-        // If ghostty recognizes it as a binding, forward to keyDown
         if isBinding {
             keyDown(with: event)
             return true
@@ -265,8 +269,7 @@ public final class GhosttySurfaceView: NSView {
         // Ignore synthetic events (zero timestamp)
         if event.timestamp == 0 { return false }
 
-        // Let all non-binding events pass through to AppKit
-        // (menu shortcuts, system shortcuts, etc.)
+        // Not a menu shortcut or ghostty binding — let AppKit handle.
         return false
     }
 
@@ -366,29 +369,6 @@ public final class GhosttySurfaceView: NSView {
         return ghostty_input_mods_e(rawValue: mods)
     }
 
-    // MARK: - Menu Key Equivalent Check
-
-    /// Recursively check if any menu item in the hierarchy matches the event's
-    /// key equivalent and modifier mask. Used to let Mori menu shortcuts take
-    /// priority over ghostty keybindings.
-    private static func menuContainsKeyEquivalent(_ menu: NSMenu, event: NSEvent) -> Bool {
-        let eventMods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let eventChars = event.charactersIgnoringModifiers ?? ""
-        guard !eventChars.isEmpty else { return false }
-
-        for item in menu.items {
-            if !item.keyEquivalent.isEmpty,
-               item.keyEquivalent == eventChars,
-               item.keyEquivalentModifierMask == eventMods {
-                return true
-            }
-            if let submenu = item.submenu,
-               menuContainsKeyEquivalent(submenu, event: event) {
-                return true
-            }
-        }
-        return false
-    }
 }
 
 // MARK: - NSTextInputClient
