@@ -78,7 +78,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // Create terminal area first — this initializes GhosttyApp and extracts theme
         let terminalArea = TerminalAreaViewController()
         terminalArea.onCreateSession = { [weak self] in
-            self?.showAddProjectPanel()
+            guard let self else { return }
+            if let manager = self.workspaceManager, manager.hasSelectedWorktree {
+                // Worktree exists but session died — recreate it
+                Task { await manager.reconnectCurrentSession() }
+            } else {
+                self.showAddProjectPanel()
+            }
         }
         self.terminalAreaController = terminalArea
 
@@ -173,7 +179,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
 
         // Wire terminal detach: when session is killed, show empty state
-        manager.onTerminalDetach = { [weak terminalArea] in
+        manager.onTerminalDetach = { [weak terminalArea, weak manager] in
+            terminalArea?.hasSelectedWorktree = manager?.hasSelectedWorktree ?? false
             terminalArea?.detach()
         }
 

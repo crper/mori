@@ -1121,6 +1121,21 @@ final class WorkspaceManager {
         return appState.worktrees.first { $0.id == id }
     }
 
+    /// Whether a worktree is currently selected (used to decide empty-state UI).
+    var hasSelectedWorktree: Bool {
+        selectedWorktree != nil
+    }
+
+    /// Recreate the tmux session for the current worktree and re-attach the terminal.
+    func reconnectCurrentSession() async {
+        guard let worktree = selectedWorktree else { return }
+        await ensureTmuxSession(for: worktree)
+        await refreshRuntimeState()
+        if let sessionName = worktree.tmuxSessionName {
+            onTerminalSwitch?(sessionName, worktree.path)
+        }
+    }
+
     private func navigateWindow(offset: Int) {
         guard let worktree = selectedWorktree else { return }
         let windows = appState.runtimeWindows

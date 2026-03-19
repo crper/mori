@@ -19,8 +19,13 @@ final class TerminalAreaViewController: NSViewController {
     private var currentSurface: NSView?
     private var emptyStateView: NSView?
 
-    /// Callback invoked when the user clicks the "New Session" button in the empty state.
+    /// Callback invoked when the user clicks the empty-state button.
+    /// If a worktree is selected (dead session), this should recreate the session.
+    /// If no worktree exists, this should open the add-project panel.
     var onCreateSession: (() -> Void)?
+
+    /// Whether the empty state should show "Reconnect" (dead session) vs "Add Project" (no project).
+    var hasSelectedWorktree: Bool = false
 
     // MARK: - Init
 
@@ -120,8 +125,12 @@ final class TerminalAreaViewController: NSViewController {
         focusCurrentSurface()
     }
 
-    /// Detach the current terminal surface (remove from view but keep in cache).
+    /// Detach the current terminal surface and evict it from the cache.
+    /// The dead surface can't be reused — reconnect creates a fresh one.
     func detach() {
+        if let session = currentSessionName {
+            surfaceCache.remove(sessionName: session)
+        }
         currentSurface?.removeFromSuperview()
         currentSurface = nil
         currentSessionName = nil
@@ -154,19 +163,23 @@ final class TerminalAreaViewController: NSViewController {
         icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 40, weight: .thin)
         icon.contentTintColor = .tertiaryLabelColor
 
-        let label = NSTextField(labelWithString: "No active session")
+        let label = NSTextField(labelWithString: hasSelectedWorktree ? "Session ended" : "No active session")
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = .systemFont(ofSize: 16, weight: .medium)
         label.textColor = .secondaryLabelColor
         label.alignment = .center
 
-        let subtitle = NSTextField(labelWithString: "Select a worktree or add a project to get started")
+        let subtitleText = hasSelectedWorktree
+            ? "The terminal session has exited"
+            : "Select a worktree or add a project to get started"
+        let subtitle = NSTextField(labelWithString: subtitleText)
         subtitle.translatesAutoresizingMaskIntoConstraints = false
         subtitle.font = .systemFont(ofSize: 12)
         subtitle.textColor = .tertiaryLabelColor
         subtitle.alignment = .center
 
-        let button = NSButton(title: "Add Project...", target: self, action: #selector(emptyStateButtonClicked))
+        let buttonTitle = hasSelectedWorktree ? "Reconnect" : "Add Project..."
+        let button = NSButton(title: buttonTitle, target: self, action: #selector(emptyStateButtonClicked))
         button.translatesAutoresizingMaskIntoConstraints = false
         button.bezelStyle = .rounded
         button.controlSize = .large
