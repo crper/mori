@@ -235,13 +235,17 @@ public final class PTYTerminalView: NSView {
     }
 
     /// Non-isolated cleanup for deinit.
+    /// At deinit time the object has no remaining references so actor isolation
+    /// cannot be violated. We use assumeIsolated to satisfy the compiler.
     private nonisolated func stopNonisolated() {
-        nonisolated(unsafe) let pid = childPID
-        nonisolated(unsafe) let source = readSource
-        if pid > 0 {
-            kill(pid, SIGHUP)
+        MainActor.assumeIsolated {
+            let pid = childPID
+            let source = readSource
+            if pid > 0 {
+                kill(pid, SIGHUP)
+            }
+            source?.cancel()
         }
-        source?.cancel()
     }
 
     // MARK: - Output Handling
