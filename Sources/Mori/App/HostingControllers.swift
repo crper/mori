@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import MoriCore
+import MoriTerminal
 import MoriUI
 
 // MARK: - Sidebar Hosting (unified: project picker + worktrees + actions)
@@ -46,9 +47,9 @@ final class SidebarHostingController: NSHostingController<SidebarContentView> {
         fatalError("init(coder:) has not been implemented")
     }
 
-    /// Sync the hosting controller's view appearance with the terminal theme.
-    func updateAppearance(settings: TerminalSettings) {
-        view.appearance = NSAppearance(named: settings.theme.isDark ? .darkAqua : .aqua)
+    /// Sync the hosting controller's view appearance with the ghostty theme.
+    func updateAppearance(themeInfo: GhosttyThemeInfo) {
+        view.appearance = NSAppearance(named: themeInfo.isDark ? .darkAqua : .aqua)
     }
 }
 
@@ -74,7 +75,6 @@ struct SidebarContentView: View {
             windows: appState.runtimeWindows,
             selectedWorktreeId: appState.uiState.selectedWorktreeId,
             selectedWindowId: appState.uiState.selectedWindowId,
-            theme: appState.terminalSettings.theme,
             onSelectProject: onSelectProject,
             onSelectWorktree: onSelectWorktree,
             onSelectWindow: onSelectWindow,

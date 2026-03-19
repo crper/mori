@@ -19,15 +19,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private var commandPaletteController: CommandPaletteController?
     private var rootSplitVC: RootSplitViewController?
     private var keyMonitor: Any?
-    private var settingsWindowController: NSWindowController?
     private var sidebarController: SidebarHostingController?
-    private var terminalSettings = TerminalSettings.load()
     private var ipcServer: IPCServer?
     private var ipcHandler: IPCHandler?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Task 3.8: Single instance check
         enforceSingleInstance()
+
+        // Clean up legacy terminal settings from UserDefaults
+        TerminalSettings.clearLegacy()
 
         // Set self as notification center delegate for click handling.
         // UNUserNotificationCenter requires a valid bundle proxy — guard for swift run.
@@ -72,8 +73,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // Load persisted state
         try? manager.loadAll()
 
-        // Build the window
-        let windowController = MainWindowController()
+        // Create terminal area first — this initializes GhosttyApp and extracts theme
+        let terminalArea = TerminalAreaViewController()
+        terminalArea.onCreateSession = { [weak self] in
+            self?.showAddProjectPanel()
+        }
+        self.terminalAreaController = terminalArea
+
+        let themeInfo = terminalArea.themeInfo
+
+        // Build the window with ghostty theme
+        let windowController = MainWindowController(themeInfo: themeInfo)
         self.mainWindowController = windowController
 
         // Build split view children
@@ -116,7 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 self?.showAddProjectPanel()
             },
             onOpenSettings: { [weak self] in
-                self?.showSettingsWindow()
+                self?.showGhosttyConfig()
             },
             onOpenCommandPalette: { [weak self] in
                 self?.commandPaletteController?.toggle()
@@ -124,13 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         )
 
         self.sidebarController = sidebarController
-        sidebarController.updateAppearance(settings: self.terminalSettings)
-
-        let terminalArea = TerminalAreaViewController()
-        terminalArea.onCreateSession = { [weak self] in
-            self?.showAddProjectPanel()
-        }
-        self.terminalAreaController = terminalArea
+        sidebarController.updateAppearance(themeInfo: themeInfo)
 
         let splitVC = RootSplitViewController(
             sidebarController: sidebarController,
@@ -180,8 +184,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             // Start coordinated polling (tmux + git status on each 5s tick)
             manager.startPolling()
 
-            // Apply terminal theme to tmux sessions
-            await TmuxThemeApplicator.apply(settings: self.terminalSettings, tmuxBackend: manager.tmuxBackend)
+            // Apply ghostty theme colors to tmux (pane borders, status bar)
+            if let terminalArea = self.terminalAreaController {
+                await TmuxThemeApplicator.apply(
+                    themeInfo: terminalArea.themeInfo,
+                    tmuxBackend: manager.tmuxBackend
+                )
+            }
         }
     }
 
@@ -249,6 +258,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
     }
 
+    // MARK: - Ghostty Config
+
+    /// Open the user's ghostty config file.
+    private func showGhosttyConfig() {
+        let configPath = NSHomeDirectory() + "/.config/ghostty/config"
+
+        // Create config dir and file if they don't exist
+        if !FileManager.default.fileExists(atPath: configPath) {
+            let dir = (configPath as NSString).deletingLastPathComponent
+            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+            let defaultContent = """
+            # Ghostty terminal configuration
+            # See https://ghostty.org/docs/config for all options
+            #
+            # font-family = SF Mono
+            # font-size = 13
+            # theme = catppuccin-mocha
+
+            """
+            try? defaultContent.write(toFile: configPath, atomically: true, encoding: .utf8)
+        }
+
+        // Open with default editor via NSWorkspace
+        NSWorkspace.shared.open(URL(fileURLWithPath: configPath))
+    }
+
     // MARK: - Main Menu (Task 5.4)
 
     private func setupMainMenu() {
@@ -259,7 +294,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "About Mori", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(showSettingsMenuAction), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: "Ghostty Config...", action: #selector(showSettingsMenuAction), keyEquivalent: ",")
         settingsItem.target = self
         appMenu.addItem(settingsItem)
         appMenu.addItem(.separator())
@@ -566,54 +601,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     // MARK: - Settings (Cmd+,)
 
     @objc private func showSettingsMenuAction() {
-        showSettingsWindow()
-    }
-
-    private func showSettingsWindow() {
-        // If already open, bring to front
-        if let existing = settingsWindowController?.window, existing.isVisible {
-            existing.makeKeyAndOrderFront(nil)
-            return
-        }
-
-        // Reload from disk so we always show the persisted state
-        self.terminalSettings = TerminalSettings.load()
-
-        // Wrapper view uses @State so SwiftUI properly tracks changes and
-        // re-renders dependent UI (theme preview, etc.) on every edit.
-        let settingsView = SettingsWindowContent(
-            initial: self.terminalSettings,
-            onChanged: { [weak self] newSettings in
-                guard let self else { return }
-                self.terminalSettings = newSettings
-                self.terminalSettings.save()
-                self.appState?.terminalSettings = newSettings
-                self.terminalAreaController?.applySettings(self.terminalSettings)
-                self.mainWindowController?.updateBackground(settings: self.terminalSettings)
-                self.sidebarController?.updateAppearance(settings: self.terminalSettings)
-                if let tmuxBackend = self.workspaceManager?.tmuxBackend {
-                    let settings = self.terminalSettings
-                    Task {
-                        await TmuxThemeApplicator.apply(settings: settings, tmuxBackend: tmuxBackend)
-                    }
-                }
-            }
-        )
-
-        let hostingController = NSHostingController(rootView: settingsView)
-        let window = NSWindow(contentViewController: hostingController)
-        window.title = "Settings"
-        window.styleMask = [.titled, .closable, .fullSizeContentView]
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.backgroundColor = NSColor(hex: self.terminalSettings.theme.background)
-        window.appearance = NSAppearance(named: self.terminalSettings.theme.isDark ? .darkAqua : .aqua)
-        window.center()
-        window.setFrameAutosaveName("MoriSettings")
-
-        let controller = NSWindowController(window: window)
-        self.settingsWindowController = controller
-        controller.showWindow(nil)
+        showGhosttyConfig()
     }
 
     // MARK: - Single Instance (Task 3.8)
@@ -660,34 +648,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         completionHandler([.banner, .sound])
-    }
-}
-
-// MARK: - Settings Window Wrapper
-
-/// Thin wrapper that gives SwiftUI `@State` ownership of the settings value
-/// so pickers, sliders, and the theme preview all update in sync.
-/// Also updates the settings window's own appearance when the theme changes.
-private struct SettingsWindowContent: View {
-    @State var settings: TerminalSettings
-    var onChanged: (TerminalSettings) -> Void
-
-    init(initial: TerminalSettings, onChanged: @escaping (TerminalSettings) -> Void) {
-        self._settings = State(initialValue: initial)
-        self.onChanged = onChanged
-    }
-
-    var body: some View {
-        TerminalSettingsView(settings: $settings, onChanged: {
-            onChanged(settings)
-            updateSettingsWindowAppearance()
-        })
-    }
-
-    private func updateSettingsWindowAppearance() {
-        guard let window = NSApp.windows.first(where: { $0.frameAutosaveName == "MoriSettings" }) else { return }
-        let theme = settings.theme
-        window.backgroundColor = NSColor(hex: theme.background)
-        window.appearance = NSAppearance(named: theme.isDark ? .darkAqua : .aqua)
     }
 }

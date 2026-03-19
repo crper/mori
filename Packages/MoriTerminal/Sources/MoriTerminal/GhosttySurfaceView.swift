@@ -134,9 +134,13 @@ public final class GhosttySurfaceView: NSView {
         keyEv.action = action
         keyEv.keycode = UInt32(event.keyCode)
         keyEv.mods = Self.ghosttyMods(event.modifierFlags)
-        keyEv.consumed_mods = Self.ghosttyMods(
-            event.modifierFlags.subtracting([.control, .command])
-        )
+        // consumed_mods tells ghostty which modifiers were used by the OS
+        // to produce the text (rather than being real modifier keys).
+        // On macOS, Option can either produce special chars (consumed) or
+        // act as Alt (not consumed). Ghostty handles this via its
+        // macos-option-as-alt config. We report all non-action modifiers
+        // as potentially consumed and let ghostty decide.
+        keyEv.consumed_mods = GHOSTTY_MODS_NONE
 
         // Unshifted codepoint
         if event.type == .keyDown || event.type == .keyUp {
@@ -328,9 +332,7 @@ public final class GhosttySurfaceView: NSView {
         keyEv.action = action
         keyEv.keycode = UInt32(event.keyCode)
         keyEv.mods = Self.ghosttyMods(event.modifierFlags)
-        keyEv.consumed_mods = Self.ghosttyMods(
-            event.modifierFlags.subtracting([.control, .command])
-        )
+        keyEv.consumed_mods = GHOSTTY_MODS_NONE
         keyEv.text = nil
         keyEv.composing = false
 

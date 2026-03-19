@@ -1,8 +1,8 @@
 import Foundation
-import MoriCore
 
-/// Writes TerminalSettings to a Ghostty-compatible config file.
-/// Config uses Ghostty's `key = value` format, loaded via `ghostty_config_load_file()`.
+/// Writes minimal Mori-specific overrides to a Ghostty config file.
+/// User preferences (font, theme, cursor, keybindings, etc.) come from
+/// Ghostty's own config at `~/.config/ghostty/config`.
 @MainActor
 enum GhosttyConfigWriter {
 
@@ -11,58 +11,24 @@ enum GhosttyConfigWriter {
         return appSupport.appendingPathComponent("Mori", isDirectory: true)
     }()
 
-    static let configPath: URL = configDir.appendingPathComponent("ghostty.conf")
+    static let configPath: URL = configDir.appendingPathComponent("ghostty-mori-overrides.conf")
 
-    /// Write a Ghostty config file from the given settings. Returns the file path.
+    /// Write Mori-specific embedding overrides. Returns the file path.
     @discardableResult
-    static func write(settings: TerminalSettings) -> String {
-        let theme = settings.theme
-        var lines: [String] = []
-
-        // Font
-        lines.append("font-family = \(settings.fontFamily)")
-        lines.append("font-size = \(Int(settings.fontSize))")
-
-        // Colors (Ghostty uses rrggbb without # prefix)
-        lines.append("foreground = \(stripHash(theme.foreground))")
-        lines.append("background = \(stripHash(theme.background))")
-        lines.append("cursor-color = \(stripHash(theme.cursor))")
-        lines.append("selection-background = \(stripHash(theme.selection))")
-
-        // ANSI palette (16 colors)
-        for (i, color) in theme.ansi.enumerated() {
-            lines.append("palette = \(i)=#\(stripHash(color))")
-        }
-
-        // Cursor style
-        switch settings.cursorStyle {
-        case .block:
-            lines.append("cursor-style = block")
-        case .underline:
-            lines.append("cursor-style = underline")
-        case .bar:
-            lines.append("cursor-style = bar")
-        }
-        lines.append("cursor-style-blink = true")
-
-        // Terminal compatibility
-        lines.append("term = xterm-256color")
-
-        // Disable Ghostty's built-in window chrome — Mori manages its own
-        lines.append("window-decoration = false")
-        lines.append("confirm-close-surface = false")
-        lines.append("quit-after-last-window-closed = false")
+    static func write() -> String {
+        let lines: [String] = [
+            "# Mori embedding overrides — do not edit manually.",
+            "# User preferences belong in ~/.config/ghostty/config",
+            "window-decoration = false",
+            "confirm-close-surface = false",
+            "quit-after-last-window-closed = false",
+            "# Override ghostty's default xterm-ghostty for tmux compatibility",
+            "term = xterm-256color",
+        ]
 
         let content = lines.joined(separator: "\n") + "\n"
-
-        // Write to disk
         try? FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
         try? content.write(to: configPath, atomically: true, encoding: .utf8)
-
         return configPath.path
-    }
-
-    private static func stripHash(_ hex: String) -> String {
-        hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
     }
 }

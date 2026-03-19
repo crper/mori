@@ -10,13 +10,10 @@ let package = Package(
     products: [
         .library(name: "MoriTerminal", targets: ["MoriTerminal"]),
     ],
-    dependencies: [
-        .package(path: "../MoriCore"),
-    ],
     targets: [
         .target(
             name: "MoriTerminal",
-            dependencies: ["MoriCore", "GhosttyKit"],
+            dependencies: ["GhosttyKit"],
             path: "Sources/MoriTerminal",
             linkerSettings: [
                 .linkedFramework("Carbon"),

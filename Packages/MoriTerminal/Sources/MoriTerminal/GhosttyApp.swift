@@ -1,5 +1,4 @@
 import AppKit
-import MoriCore
 import GhosttyKit
 
 /// Sendable wrapper for raw pointers crossing isolation boundaries in C callbacks.
@@ -23,11 +22,14 @@ final class GhosttyApp {
     private(set) var app: ghostty_app_t?
     private var initialized = false
 
+    /// Theme colors resolved from the ghostty config at startup.
+    private(set) var themeInfo: GhosttyThemeInfo = .fallback
+
     private init() {}
 
     /// Initialize the ghostty runtime and create the app context.
     /// Call once before creating any surfaces.
-    func start(settings: TerminalSettings) {
+    func start() {
         guard !initialized else { return }
         initialized = true
 
@@ -37,11 +39,14 @@ final class GhosttyApp {
             return
         }
 
-        // Build config from settings
-        guard let config = buildConfig(settings: settings) else {
+        // Build config: user's ghostty config + Mori overrides
+        guard let config = buildConfig() else {
             NSLog("[GhosttyApp] failed to create config")
             return
         }
+
+        // Extract theme info before the config is consumed by ghostty_app_new
+        self.themeInfo = GhosttyThemeInfo.from(config: config)
 
         // Build runtime config in nonisolated context so closures don't
         // inherit @MainActor isolation (they're called from renderer thread).
@@ -83,31 +88,22 @@ final class GhosttyApp {
 
     // MARK: - Config
 
-    /// Build a ghostty config from TerminalSettings.
-    func buildConfig(settings: TerminalSettings) -> ghostty_config_t? {
+    /// Build a ghostty config: load user's config first, then apply Mori overrides.
+    func buildConfig() -> ghostty_config_t? {
         guard let config = ghostty_config_new() else { return nil }
 
-        // Write settings to a temp config file and load it
-        let path = GhosttyConfigWriter.write(settings: settings)
-        ghostty_config_load_file(config, path)
+        // 1. Load user's ghostty config (standard path)
+        let userConfig = NSHomeDirectory() + "/.config/ghostty/config"
+        if FileManager.default.fileExists(atPath: userConfig) {
+            ghostty_config_load_file(config, userConfig)
+        }
+
+        // 2. Apply Mori embedding overrides (window-decoration, etc.)
+        let overridePath = GhosttyConfigWriter.write()
+        ghostty_config_load_file(config, overridePath)
+
         ghostty_config_finalize(config)
-
         return config
-    }
-
-    /// Update the app-level config (affects new surfaces).
-    func updateConfig(settings: TerminalSettings) {
-        guard let app else { return }
-        guard let config = buildConfig(settings: settings) else { return }
-        ghostty_app_update_config(app, config)
-        ghostty_config_free(config)
-    }
-
-    /// Update config for a specific surface (hot-reload).
-    func updateSurfaceConfig(surface: ghostty_surface_t, settings: TerminalSettings) {
-        guard let config = buildConfig(settings: settings) else { return }
-        ghostty_surface_update_config(surface, config)
-        ghostty_config_free(config)
     }
 
     // MARK: - Event Loop

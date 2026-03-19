@@ -10,7 +10,6 @@ public struct WorktreeSidebarView: View {
     private let windows: [RuntimeWindow]
     private let selectedWorktreeId: UUID?
     private let selectedWindowId: String?
-    private let theme: TerminalTheme?
     private let onSelectProject: ((UUID) -> Void)?
     private let onSelectWorktree: (UUID) -> Void
     private let onSelectWindow: (String) -> Void
@@ -33,7 +32,6 @@ public struct WorktreeSidebarView: View {
         windows: [RuntimeWindow],
         selectedWorktreeId: UUID?,
         selectedWindowId: String?,
-        theme: TerminalTheme? = nil,
         onSelectProject: ((UUID) -> Void)? = nil,
         onSelectWorktree: @escaping (UUID) -> Void,
         onSelectWindow: @escaping (String) -> Void,
@@ -51,7 +49,6 @@ public struct WorktreeSidebarView: View {
         self.windows = windows
         self.selectedWorktreeId = selectedWorktreeId
         self.selectedWindowId = selectedWindowId
-        self.theme = theme
         self.onSelectProject = onSelectProject
         self.onSelectWorktree = onSelectWorktree
         self.onSelectWindow = onSelectWindow
@@ -85,7 +82,7 @@ public struct WorktreeSidebarView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(sidebarBackground)
-        .preferredColorScheme(theme.map { $0.isDark ? .dark : .light })
+        .preferredColorScheme(.dark)
     }
 
     // MARK: - Project Section
@@ -298,10 +295,7 @@ public struct WorktreeSidebarView: View {
     // MARK: - Theme
 
     private var sidebarBackground: Color {
-        if let theme {
-            return Color(nsColor: nsColor(hex: theme.background))
-        }
-        return Color(nsColor: .controlBackgroundColor)
+        Color(nsColor: .controlBackgroundColor)
     }
 
     // MARK: - Footer
