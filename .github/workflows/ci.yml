@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ghosttykit:
+    uses: ./.github/workflows/build-ghosttykit.yml
+
+  build-and-test:
+    needs: ghosttykit
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download GhosttyKit
+        uses: actions/download-artifact@v4
+        with:
+          name: GhosttyKit
+
+      - name: Verify GhosttyKit
+        run: |
+          ls -la Frameworks/GhosttyKit.xcframework/
+          ls -la Frameworks/ghostty-resources/ | head -5
+
+      - name: Cache SPM packages
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ hashFiles('Package.resolved', '**/Package.resolved') }}
+          restore-keys: spm-
+
+      - name: Build (release)
+        run: swift build -c release 2>&1
+
+      - name: Test MoriCore
+        run: cd Packages/MoriCore && swift run MoriCoreTests
+
+      - name: Test MoriPersistence
+        run: cd Packages/MoriPersistence && swift run MoriPersistenceTests
+
+      - name: Test MoriTmux
+        run: cd Packages/MoriTmux && swift run MoriTmuxTests
+
+      - name: Test MoriIPC
+        run: cd Packages/MoriIPC && swift run MoriIPCTests
+
+  bundle:
+    needs: [ghosttykit, build-and-test]
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download GhosttyKit
+        uses: actions/download-artifact@v4
+        with:
+          name: GhosttyKit
+
+      - name: Cache SPM packages
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ hashFiles('Package.resolved', '**/Package.resolved') }}
+          restore-keys: spm-
+
+      - name: Install xcbeautify
+        run: brew install xcbeautify
+
+      - name: Bundle unsigned Mori.app
+        run: bash scripts/bundle.sh
+
+      - name: Upload Mori.app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mori.app
+          path: Mori.app
+          retention-days: 30

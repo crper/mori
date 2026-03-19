@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  ghosttykit:
+    uses: ./.github/workflows/build-ghosttykit.yml
+
+  release:
+    needs: ghosttykit
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download GhosttyKit
+        uses: actions/download-artifact@v4
+        with:
+          name: GhosttyKit
+
+      - name: Verify GhosttyKit
+        run: |
+          ls -la Frameworks/GhosttyKit.xcframework/
+          ls -la Frameworks/ghostty-resources/ | head -5
+
+      - name: Cache SPM packages
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ hashFiles('Package.resolved', '**/Package.resolved') }}
+          restore-keys: spm-
+
+      - name: Install xcbeautify
+        run: brew install xcbeautify
+
+      - name: Build and bundle unsigned Mori.app
+        run: bash scripts/bundle.sh
+
+      - name: Run tests
+        run: |
+          cd Packages/MoriCore && swift run MoriCoreTests && cd ../..
+          cd Packages/MoriPersistence && swift run MoriPersistenceTests && cd ../..
+          cd Packages/MoriTmux && swift run MoriTmuxTests && cd ../..
+          cd Packages/MoriIPC && swift run MoriIPCTests && cd ../..
+
+      - name: Create release archive
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          ditto -c -k --keepParent Mori.app "Mori-${VERSION}-macos-arm64.zip"
+          echo "RELEASE_ASSET=Mori-${VERSION}-macos-arm64.zip" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.RELEASE_ASSET }}
+          generate_release_notes: true
