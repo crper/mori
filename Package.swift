@@ -9,7 +9,7 @@ let package = Package(
     ],
     products: [
         .executable(name: "Mori", targets: ["Mori"]),
-        .executable(name: "ws", targets: ["WS"]),
+        .executable(name: "mori", targets: ["MoriCLI"]),
     ],
     dependencies: [
         .package(path: "Packages/MoriCore"),
@@ -36,12 +36,12 @@ let package = Package(
             path: "Sources/Mori"
         ),
         .executableTarget(
-            name: "WS",
+            name: "MoriCLI",
             dependencies: [
                 "MoriIPC",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
-            path: "Sources/WS"
+            path: "Sources/MoriCLI"
         ),
     ]
 )

@@ -193,7 +193,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // Set up command palette (Cmd+Shift+P)
         setupCommandPalette(appState: state, manager: manager)
 
-        // Start IPC server for ws CLI communication
+        // Start IPC server for mori CLI communication
         startIPCServer(manager: manager)
 
         // Update window title from current project

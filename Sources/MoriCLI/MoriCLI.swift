@@ -3,9 +3,9 @@ import Foundation
 import MoriIPC
 
 @main
-struct WS: ParsableCommand {
+struct MoriCLI: ParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "ws",
+        commandName: "mori",
         abstract: "Mori workspace CLI — communicate with the running Mori app.",
         subcommands: [
             Project.self,
@@ -39,7 +39,7 @@ func runIPCRequest(_ command: IPCCommand) throws {
     }
 }
 
-// MARK: - ws project
+// MARK: - mori project
 
 struct Project: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -59,7 +59,7 @@ struct ProjectList: ParsableCommand {
     }
 }
 
-// MARK: - ws worktree
+// MARK: - mori worktree
 
 struct WorktreeCmd: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -86,7 +86,7 @@ struct WorktreeCreate: ParsableCommand {
     }
 }
 
-// MARK: - ws focus
+// MARK: - mori focus
 
 struct Focus: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -104,7 +104,7 @@ struct Focus: ParsableCommand {
     }
 }
 
-// MARK: - ws send
+// MARK: - mori send
 
 struct Send: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -128,7 +128,7 @@ struct Send: ParsableCommand {
     }
 }
 
-// MARK: - ws new-window
+// MARK: - mori new-window
 
 struct NewWindow: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -150,7 +150,7 @@ struct NewWindow: ParsableCommand {
     }
 }
 
-// MARK: - ws open
+// MARK: - mori open
 
 struct Open: ParsableCommand {
     static let configuration = CommandConfiguration(
