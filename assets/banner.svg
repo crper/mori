@@ -101,6 +101,6 @@
 
   <!-- Subtle terminal prompt hint -->
   <text x="655" y="280" font-family="'SF Mono', 'JetBrains Mono', 'Fira Code', monospace" font-size="18" fill="#7ab868" opacity="0.6">
-    $ projects &middot; worktrees &middot; tmux
+    $ projects · worktrees · tmux
   </text>
 </svg>
