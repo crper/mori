@@ -187,6 +187,10 @@ final class WorkspaceManager {
         if let window = appState.runtimeWindows.first(where: { $0.tmuxWindowId == windowId }),
            let worktree = appState.worktrees.first(where: { $0.id == window.worktreeId }),
            let sessionName = worktree.tmuxSessionName {
+            // Keep worktree selection in sync when selecting a window from a different worktree
+            if appState.uiState.selectedWorktreeId != worktree.id {
+                appState.uiState.selectedWorktreeId = worktree.id
+            }
             Task {
                 try? await tmuxBackend.selectWindow(sessionId: sessionName, windowId: windowId)
             }
