@@ -17,10 +17,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download GhosttyKit
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: GhosttyKit
           path: Frameworks
@@ -31,9 +31,9 @@ jobs:
           ls -la Frameworks/ghostty-resources/ | head -5
 
       - name: Cache SPM packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
-          path: Frameworksbuild
+          path: .build
           key: spm-${{ hashFiles('Package.resolved', '**/Package.resolved') }}
           restore-keys: spm-
 
@@ -58,18 +58,18 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download GhosttyKit
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: GhosttyKit
           path: Frameworks
 
       - name: Cache SPM packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
-          path: Frameworksbuild
+          path: .build
           key: spm-${{ hashFiles('Package.resolved', '**/Package.resolved') }}
           restore-keys: spm-
 
@@ -80,7 +80,7 @@ jobs:
         run: bash scripts/bundle.sh
 
       - name: Upload Mori.app
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: Mori.app
           path: Mori.app
