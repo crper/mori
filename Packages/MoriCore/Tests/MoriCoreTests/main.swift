@@ -73,6 +73,7 @@ func testWorktreeDefaultInit() {
     assertEqual(wt.stagedCount, 0)
     assertEqual(wt.modifiedCount, 0)
     assertEqual(wt.untrackedCount, 0)
+    assertTrue(wt.hasUpstream)
     assertNil(wt.tmuxSessionId)
     assertNil(wt.tmuxSessionName)
     assertEqual(wt.unreadCount, 0)
@@ -89,6 +90,7 @@ func testWorktreeCodable() {
         stagedCount: 3,
         modifiedCount: 2,
         untrackedCount: 1,
+        hasUpstream: false,
         agentState: .running,
         status: .active
     )
@@ -98,6 +100,7 @@ func testWorktreeCodable() {
     assertEqual(decoded.stagedCount, 3)
     assertEqual(decoded.modifiedCount, 2)
     assertEqual(decoded.untrackedCount, 1)
+    assertFalse(decoded.hasUpstream)
 }
 
 func testWorktreeCodableBackwardsCompat() {
@@ -128,6 +131,7 @@ func testWorktreeCodableBackwardsCompat() {
     assertEqual(decoded.stagedCount, 0)
     assertEqual(decoded.modifiedCount, 0)
     assertEqual(decoded.untrackedCount, 0)
+    assertTrue(decoded.hasUpstream)
 }
 
 // MARK: - RuntimeWindow Tests

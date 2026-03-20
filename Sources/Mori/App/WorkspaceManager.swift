@@ -158,6 +158,12 @@ final class WorkspaceManager {
         appState.uiState.selectedWorktreeId = worktreeId
         appState.uiState.selectedWindowId = nil
 
+        // Track last active time
+        if let index = appState.worktrees.firstIndex(where: { $0.id == worktreeId }) {
+            appState.worktrees[index].lastActiveAt = Date()
+            try? worktreeRepo.save(appState.worktrees[index])
+        }
+
         guard let worktree = appState.worktrees.first(where: { $0.id == worktreeId }) else { return }
 
         // Ensure tmux session exists, check branch, then switch terminal
@@ -897,6 +903,7 @@ final class WorkspaceManager {
                 || wt.stagedCount != status.stagedCount
                 || wt.modifiedCount != status.modifiedCount
                 || wt.untrackedCount != status.untrackedCount
+                || wt.hasUpstream != (status.upstream != nil)
 
             if changed {
                 appState.worktrees[i].hasUncommittedChanges = status.isDirty
@@ -905,6 +912,7 @@ final class WorkspaceManager {
                 appState.worktrees[i].stagedCount = status.stagedCount
                 appState.worktrees[i].modifiedCount = status.modifiedCount
                 appState.worktrees[i].untrackedCount = status.untrackedCount
+                appState.worktrees[i].hasUpstream = status.upstream != nil
                 // Persist to DB
                 try? worktreeRepo.save(appState.worktrees[i])
             }

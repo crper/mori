@@ -131,7 +131,24 @@ public struct WorktreeRowView: View {
                     .frame(width: MoriTokens.Icon.dot, height: MoriTokens.Icon.dot)
                     .accessibilityLabel("Active")
             }
+
+            if let timeText = relativeTimeText {
+                Text(timeText)
+                    .font(MoriTokens.Font.caption)
+                    .foregroundStyle(MoriTokens.Color.inactive)
+                    .lineLimit(1)
+            }
         }
+    }
+
+    private var relativeTimeText: String? {
+        guard let date = worktree.lastActiveAt else { return nil }
+        let seconds = Int(-date.timeIntervalSinceNow)
+        if seconds < 60 { return "just now" }
+        if seconds < 3600 { return "\(seconds / 60)m ago" }
+        if seconds < 86400 { return "\(seconds / 3600)h ago" }
+        if seconds < 604_800 { return "\(seconds / 86400)d ago" }
+        return nil
     }
 
     // MARK: - Git Status Badges
@@ -157,6 +174,9 @@ public struct WorktreeRowView: View {
 
     private var gitStatusIndicators: [(text: String, color: Color, label: String)] {
         var result: [(text: String, color: Color, label: String)] = []
+        if !worktree.hasUpstream && worktree.branch != nil {
+            result.append(("⊘", MoriTokens.Color.info, "No upstream"))
+        }
         if worktree.aheadCount > 0 {
             result.append(("↑\(worktree.aheadCount)", MoriTokens.Color.success, "\(worktree.aheadCount) ahead"))
         }

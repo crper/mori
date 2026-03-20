@@ -15,6 +15,7 @@ public struct Worktree: Identifiable, Codable, Equatable, Sendable {
     public var stagedCount: Int
     public var modifiedCount: Int
     public var untrackedCount: Int
+    public var hasUpstream: Bool
     public var lastActiveAt: Date?
     public var tmuxSessionId: String?
     public var tmuxSessionName: String?
@@ -37,6 +38,7 @@ public struct Worktree: Identifiable, Codable, Equatable, Sendable {
         stagedCount: Int = 0,
         modifiedCount: Int = 0,
         untrackedCount: Int = 0,
+        hasUpstream: Bool = true,
         lastActiveAt: Date? = nil,
         tmuxSessionId: String? = nil,
         tmuxSessionName: String? = nil,
@@ -58,6 +60,7 @@ public struct Worktree: Identifiable, Codable, Equatable, Sendable {
         self.stagedCount = stagedCount
         self.modifiedCount = modifiedCount
         self.untrackedCount = untrackedCount
+        self.hasUpstream = hasUpstream
         self.lastActiveAt = lastActiveAt
         self.tmuxSessionId = tmuxSessionId
         self.tmuxSessionName = tmuxSessionName
@@ -84,6 +87,7 @@ public struct Worktree: Identifiable, Codable, Equatable, Sendable {
         stagedCount = try container.decodeIfPresent(Int.self, forKey: .stagedCount) ?? 0
         modifiedCount = try container.decodeIfPresent(Int.self, forKey: .modifiedCount) ?? 0
         untrackedCount = try container.decodeIfPresent(Int.self, forKey: .untrackedCount) ?? 0
+        hasUpstream = try container.decodeIfPresent(Bool.self, forKey: .hasUpstream) ?? true
         lastActiveAt = try container.decodeIfPresent(Date.self, forKey: .lastActiveAt)
         tmuxSessionId = try container.decodeIfPresent(String.self, forKey: .tmuxSessionId)
         tmuxSessionName = try container.decodeIfPresent(String.self, forKey: .tmuxSessionName)
