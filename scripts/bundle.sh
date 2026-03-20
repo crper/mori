@@ -69,5 +69,12 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
 </plist>
 EOF
 
-echo "✅ Built $APP_BUNDLE"
-echo "   Run with: open $APP_BUNDLE"
+# Quit the app if it's running
+pkill -x "$APP_NAME" 2>/dev/null && sleep 1 || true
+
+# Move to /Applications
+rm -rf "/Applications/$APP_BUNDLE"
+mv "$APP_BUNDLE" "/Applications/$APP_BUNDLE"
+
+echo "✅ Built and installed to /Applications/$APP_BUNDLE"
+echo "   Run with: open /Applications/$APP_BUNDLE"
