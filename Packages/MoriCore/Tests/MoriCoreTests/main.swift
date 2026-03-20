@@ -600,20 +600,20 @@ func testWindowBadgeRicherPriority() {
 }
 
 func testWindowBadgeAgentCompleted() {
-    // Completed agent state doesn't trigger error/waiting, falls through to running/idle
+    // Completed agent state returns .agentDone (higher priority than unread/idle)
     assertEqual(
         StatusAggregator.windowBadge(
             hasUnreadOutput: false, isRunning: false, isLongRunning: false,
             agentState: .completed
         ),
-        .idle
+        .agentDone
     )
     assertEqual(
         StatusAggregator.windowBadge(
             hasUnreadOutput: true, isRunning: false, isLongRunning: false,
             agentState: .completed
         ),
-        .unread
+        .agentDone
     )
 }
 
@@ -712,13 +712,13 @@ func testWindowBadgeAllInputCombinations() {
         .longRunning
     )
 
-    // Agent completed alone -> idle
+    // Agent completed alone -> agentDone
     assertEqual(
         StatusAggregator.windowBadge(
             hasUnreadOutput: false, isRunning: false, isLongRunning: false,
             agentState: .completed
         ),
-        .idle
+        .agentDone
     )
 
     // Unread only -> .unread
