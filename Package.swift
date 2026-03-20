@@ -33,7 +33,13 @@ let package = Package(
                 "MoriUI",
                 "MoriIPC",
             ],
-            path: "Sources/Mori"
+            path: "Sources/Mori",
+            resources: [
+                .copy("Resources/mori-hook-common.sh"),
+                .copy("Resources/mori-agent-hook.sh"),
+                .copy("Resources/mori-codex-hook.sh"),
+                .copy("Resources/mori-pi-extension.ts"),
+            ]
         ),
         .executableTarget(
             name: "MoriCLI",

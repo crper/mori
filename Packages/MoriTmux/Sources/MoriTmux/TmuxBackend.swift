@@ -230,6 +230,16 @@ public actor TmuxBackend: TmuxControlling {
         )
     }
 
+    /// Unset a pane-level user option.
+    public func unsetPaneOption(paneId: String, option: String) async throws {
+        _ = try await runner.run("set-option", "-pu", "-t", paneId, option)
+    }
+
+    /// Set a window-level option (targeting the window containing the given pane).
+    public func setWindowOption(paneId: String, option: String, value: String) async throws {
+        _ = try await runner.run("set-option", "-w", "-t", paneId, option, value)
+    }
+
     public func navigatePane(sessionId: String, direction: PaneDirection) async throws {
         if let target = direction.selectTarget {
             // "session:.{next}" = next pane in the current window of the session

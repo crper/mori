@@ -488,6 +488,52 @@ func testPaneFormatContainsNewFields() {
     )
 }
 
+// MARK: - Agent Pane Option Tests
+
+func testAgentProcessNames() {
+    assertTrue(AgentDetector.agentProcessNames.contains("claude"))
+    assertTrue(AgentDetector.agentProcessNames.contains("codex"))
+    assertTrue(AgentDetector.agentProcessNames.contains("omp"))
+    assertTrue(AgentDetector.agentProcessNames.contains("pi"))
+    assertFalse(AgentDetector.agentProcessNames.contains("zsh"))
+}
+
+func testParsePanesWithAgentState() {
+    let output = "%0\t/dev/ttys001\t1\t/Users/test\tzsh\t1710784200\tclaude\t1710784100\t12345\tworking\tclaude\n"
+    let panes = TmuxParser.parsePanes(output)
+    assertEqual(panes.count, 1)
+    assertEqual(panes[0].agentState, "working")
+    assertEqual(panes[0].agentName, "claude")
+}
+
+func testParsePanesWithEmptyAgentFields() {
+    let output = "%0\t/dev/ttys001\t1\t/Users/test\tzsh\t1710784200\tnode\t1710784100\t12345\t\t\n"
+    let panes = TmuxParser.parsePanes(output)
+    assertEqual(panes.count, 1)
+    assertNil(panes[0].agentState)
+    assertNil(panes[0].agentName)
+}
+
+func testParsePanesWithoutAgentFields() {
+    // Backwards compatible: fewer fields than expected
+    let output = "%0\t/dev/ttys001\t1\t/Users/test\tzsh\t1710784200\tnode\t1710784100\t12345\n"
+    let panes = TmuxParser.parsePanes(output)
+    assertEqual(panes.count, 1)
+    assertNil(panes[0].agentState)
+    assertNil(panes[0].agentName)
+}
+
+func testPaneFormatContainsAgentFields() {
+    assertTrue(
+        TmuxParser.paneFormat.contains("#{@mori-agent-state}"),
+        "Pane format should include @mori-agent-state"
+    )
+    assertTrue(
+        TmuxParser.paneFormat.contains("#{@mori-agent-name}"),
+        "Pane format should include @mori-agent-name"
+    )
+}
+
 // MARK: - Main
 
 print("=== MoriTmux Tests ===")
@@ -557,6 +603,13 @@ testIsShellProcess()
 testParsePanesWithCurrentCommand()
 testParsePanesWithEmptyCommandFields()
 testPaneFormatContainsNewFields()
+
+// Agent pane options
+testAgentProcessNames()
+testParsePanesWithAgentState()
+testParsePanesWithEmptyAgentFields()
+testParsePanesWithoutAgentFields()
+testPaneFormatContainsAgentFields()
 
 printResults()
 

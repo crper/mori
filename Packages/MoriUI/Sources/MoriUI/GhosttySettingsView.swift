@@ -45,6 +45,21 @@ public struct GhosttySettingsModel: Equatable {
     }
 }
 
+// MARK: - Agent Hook Model
+
+/// Represents the enable/disable state of agent hooks.
+public struct AgentHookModel: Equatable {
+    public var claudeEnabled: Bool
+    public var codexEnabled: Bool
+    public var piEnabled: Bool
+
+    public init(claudeEnabled: Bool = false, codexEnabled: Bool = false, piEnabled: Bool = false) {
+        self.claudeEnabled = claudeEnabled
+        self.codexEnabled = codexEnabled
+        self.piEnabled = piEnabled
+    }
+}
+
 // MARK: - Settings Category
 
 enum SettingsCategory: String, CaseIterable, Identifiable {
@@ -54,6 +69,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     case keyboard = "Keyboard"
     case mouse = "Mouse"
     case window = "Window"
+    case agents = "Agent Hooks"
 
     var id: String { rawValue }
 
@@ -65,6 +81,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .keyboard: return "keyboard"
         case .mouse: return "computermouse"
         case .window: return "macwindow"
+        case .agents: return "cpu"
         }
     }
 }
@@ -77,6 +94,8 @@ public struct GhosttySettingsView: View {
     var ghosttyDefaults: [String]
     var onChanged: () -> Void
     var onOpenConfigFile: () -> Void
+    @Binding var agentHooks: AgentHookModel
+    var onAgentHookChanged: ((AgentHookModel) -> Void)?
 
     @State private var selectedCategory: SettingsCategory = .theme
 
@@ -85,13 +104,17 @@ public struct GhosttySettingsView: View {
         availableThemes: [String],
         ghosttyDefaults: [String] = [],
         onChanged: @escaping () -> Void,
-        onOpenConfigFile: @escaping () -> Void
+        onOpenConfigFile: @escaping () -> Void,
+        agentHooks: Binding<AgentHookModel> = .constant(AgentHookModel()),
+        onAgentHookChanged: ((AgentHookModel) -> Void)? = nil
     ) {
         self._model = model
         self.availableThemes = availableThemes
         self.ghosttyDefaults = ghosttyDefaults
         self.onChanged = onChanged
         self.onOpenConfigFile = onOpenConfigFile
+        self._agentHooks = agentHooks
+        self.onAgentHookChanged = onAgentHookChanged
     }
 
     public var body: some View {
@@ -184,6 +207,7 @@ public struct GhosttySettingsView: View {
                     case .keyboard: KeyboardSettingsContent(model: $model, onChanged: onChanged, ghosttyDefaults: ghosttyDefaults)
                     case .mouse: MouseSettingsContent(model: $model, onChanged: onChanged)
                     case .window: WindowSettingsContent(model: $model, onChanged: onChanged)
+                    case .agents: AgentHookSettingsContent(model: $agentHooks, onChanged: { onAgentHookChanged?(agentHooks) })
                     }
                 }
                 .padding(.horizontal, 24)
@@ -983,6 +1007,72 @@ private struct WindowSettingsContent: View {
                 Toggle("", isOn: $model.windowPaddingBalance)
                     .labelsHidden()
                     .onChange(of: model.windowPaddingBalance) { _, _ in onChanged() }
+            }
+        }
+    }
+}
+
+// MARK: - Agent Hook Settings
+
+private struct AgentHookSettingsContent: View {
+    @Binding var model: AgentHookModel
+    let onChanged: () -> Void
+
+    var body: some View {
+        Text("Connect coding agents to Mori so their status appears in tab names and triggers notifications. Each hook writes a small script to ~/.config/mori/ and registers it with the agent.")
+            .font(.system(size: 12))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+        agentCard(
+            name: "Claude Code",
+            icon: "terminal",
+            description: "Adds hooks to ~/.claude/settings.json for prompt submit, tool use, stop, and notification events.",
+            isEnabled: $model.claudeEnabled
+        )
+
+        agentCard(
+            name: "Codex CLI",
+            icon: "chevron.left.forwardslash.chevron.right",
+            description: "Adds a notify entry to ~/.codex/config.toml for agent turn completion events.",
+            isEnabled: $model.codexEnabled
+        )
+
+        agentCard(
+            name: "Pi",
+            icon: "sparkle",
+            description: "Registers an extension in Pi's settings.json for agent start, end, and tool execution events.",
+            isEnabled: $model.piEnabled
+        )
+    }
+
+    private func agentCard(
+        name: String,
+        icon: String,
+        description: String,
+        isEnabled: Binding<Bool>
+    ) -> some View {
+        SettingsCard {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(name)
+                            .font(.system(size: 13, weight: .semibold))
+                        Spacer()
+                        Toggle("", isOn: isEnabled)
+                            .labelsHidden()
+                            .onChange(of: isEnabled.wrappedValue) { _, _ in onChanged() }
+                    }
+                    Text(description)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }

@@ -39,7 +39,6 @@ final class WorkspaceManager {
     let unreadTracker: UnreadTracker
     let notificationManager: NotificationManager
     let hookRunner: HookRunner
-
     /// Callback invoked when the terminal should switch to a different session.
     /// Parameters: (sessionName, workingDirectory)
     var onTerminalSwitch: ((String, String) -> Void)?
@@ -718,10 +717,9 @@ final class WorkspaceManager {
 
     // MARK: - Agent State Detection
 
-    /// Detect pane states and propagate to RuntimeWindow fields and badges.
-    /// For agent-tagged windows, captures output for full detection.
-    /// For all windows, aggregates state across all panes.
-    /// Resets worktree agentState at the start of each cycle before re-aggregating.
+    /// Read agent state from tmux pane options (set by Mori hook scripts).
+    /// No capture-pane or process scanning — hooks report state directly.
+    /// Also cleans up stale agent state when the agent has exited.
     private func detectAgentStates(sessions: [TmuxSession]) async {
         let now = Date().timeIntervalSince1970
 
@@ -733,7 +731,6 @@ final class WorkspaceManager {
         for i in appState.runtimeWindows.indices {
             let rw = appState.runtimeWindows[i]
 
-            // Find the matching tmux window across sessions
             guard let (_, tmuxWindow) = findTmuxWindow(
                 windowId: rw.tmuxWindowId,
                 in: sessions
@@ -741,11 +738,10 @@ final class WorkspaceManager {
 
             guard !tmuxWindow.panes.isEmpty else { continue }
 
-            // Aggregate state across ALL panes in this window
             var windowIsRunning = false
             var windowIsLongRunning = false
             var windowAgentState: AgentState = .none
-            var windowExitCode: Int? = nil
+            var windowDetectedAgent: String? = nil
 
             for pane in tmuxWindow.panes {
                 let isShell = PaneStateDetector.isShellProcess(pane.currentCommand)
@@ -756,38 +752,35 @@ final class WorkspaceManager {
                 if paneRunning { windowIsRunning = true }
                 if paneLongRunning { windowIsLongRunning = true }
 
-                // Agent detection only for agent-tagged windows
-                if rw.tag == .agent {
-                    do {
-                        let captured = try await tmuxBackend.capturePaneOutput(
-                            paneId: pane.paneId,
-                            lineCount: 20
-                        )
-                        let paneState = PaneStateDetector.detect(
-                            pane: pane,
-                            capturedOutput: captured,
-                            now: now
-                        )
-                        let agentState = mapAgentState(paneState.detectedAgentState)
-                        if agentStatePriority(agentState) > agentStatePriority(windowAgentState) {
-                            windowAgentState = agentState
-                        }
-                        if let exitCode = paneState.exitCode {
-                            windowExitCode = exitCode
-                        }
-                    } catch {
-                        // capture-pane failure is non-fatal; skip this pane
+                // Read hook-reported agent state from pane options
+                if let hookState = pane.agentState {
+                    // Always process the state first (agent may have finished
+                    // before this poll tick, so pane is back to shell already)
+                    let agentState = mapHookState(hookState)
+                    if agentStatePriority(agentState) > agentStatePriority(windowAgentState) {
+                        windowAgentState = agentState
+                    }
+                    if let name = pane.agentName {
+                        windowDetectedAgent = name
+                    }
+
+                    if isShell {
+                        // Agent exited — clean up stale options after processing
+                        await clearStaleAgentState(paneId: pane.paneId)
                     }
                 }
             }
 
-            // Update RuntimeWindow fields
+            // Auto-upgrade tag to .agent when a coding agent is detected
+            if windowDetectedAgent != nil && rw.tag != .agent {
+                appState.runtimeWindows[i].tag = .agent
+            }
+
             appState.runtimeWindows[i].isRunning = windowIsRunning
             appState.runtimeWindows[i].isLongRunning = windowIsLongRunning
             appState.runtimeWindows[i].agentState = windowAgentState
-            appState.runtimeWindows[i].lastExitCode = windowExitCode
+            appState.runtimeWindows[i].detectedAgent = windowDetectedAgent
 
-            // Derive badge from aggregated state
             let badge = StatusAggregator.windowBadge(
                 hasUnreadOutput: rw.hasUnreadOutput,
                 isRunning: windowIsRunning,
@@ -796,7 +789,6 @@ final class WorkspaceManager {
             )
             appState.runtimeWindows[i].badge = badge
 
-            // Update parent worktree's agentState (highest priority wins)
             if windowAgentState != .none {
                 updateWorktreeAgentState(
                     worktreeId: rw.worktreeId,
@@ -819,22 +811,30 @@ final class WorkspaceManager {
         return nil
     }
 
-    /// Map MoriTmux DetectedAgentState to MoriCore AgentState.
-    private func mapAgentState(_ detected: DetectedAgentState) -> AgentState {
-        switch detected {
-        case .none: return .none
-        case .running: return .running
-        case .waitingForInput: return .waitingForInput
-        case .error: return .error
-        case .completed: return .completed
+    /// Map hook state string to AgentState.
+    private func mapHookState(_ state: String) -> AgentState {
+        switch state {
+        case "working": return .running
+        case "done": return .completed
+        default: return .none
         }
     }
 
-    /// Update a worktree's agentState to the highest-priority agent state
-    /// across all its agent-tagged windows.
+    /// Clear stale pane options when agent has exited (pane returned to shell).
+    /// Re-enables automatic-rename so tmux picks up the current process name.
+    private func clearStaleAgentState(paneId: String) async {
+        // Unset state and name concurrently (independent operations)
+        async let _ = try? tmuxBackend.unsetPaneOption(paneId: paneId, option: "@mori-agent-state")
+        async let _ = try? tmuxBackend.unsetPaneOption(paneId: paneId, option: "@mori-agent-name")
+
+        // Re-enable automatic-rename so tmux sets the window name
+        // to the current process (e.g. zsh) instead of the stale agent name.
+        try? await tmuxBackend.setWindowOption(paneId: paneId, option: "automatic-rename", value: "on")
+    }
+
+    /// Update a worktree's agentState to the highest-priority agent state.
     private func updateWorktreeAgentState(worktreeId: UUID, agentState: AgentState) {
         guard let index = appState.worktrees.firstIndex(where: { $0.id == worktreeId }) else { return }
-        // Only upgrade — don't downgrade if another agent window has higher priority
         let current = appState.worktrees[index].agentState
         if agentStatePriority(agentState) > agentStatePriority(current) {
             appState.worktrees[index].agentState = agentState
@@ -951,12 +951,16 @@ final class WorkspaceManager {
                 let worktreeName = appState.worktrees
                     .first(where: { $0.id == rw.worktreeId })?.name ?? "Unknown"
 
+                let agentDisplayName = rw.detectedAgent
+                    .flatMap { AgentHookConfigurator.agentDisplayNames[$0] }
+
                 notificationManager.notify(
                     event,
                     windowTitle: rw.title,
                     worktreeName: worktreeName,
                     windowId: rw.tmuxWindowId,
-                    worktreeId: rw.worktreeId.uuidString
+                    worktreeId: rw.worktreeId.uuidString,
+                    agentName: agentDisplayName
                 )
             }
 
