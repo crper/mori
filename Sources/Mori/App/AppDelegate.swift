@@ -147,6 +147,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             },
             onOpenCommandPalette: { [weak self] in
                 self?.commandPaletteController?.toggle()
+            },
+            onToggleSidebarMode: { [weak manager] mode in
+                manager?.setSidebarMode(mode)
+            },
+            onSetWorkflowStatus: { [weak manager] worktreeId, status in
+                manager?.setWorkflowStatus(worktreeId: worktreeId, status: status)
             }
         )
 
@@ -860,7 +866,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             showAddProjectPanel()
 
         default:
-            break
+            // Handle "action.status-<rawValue>" patterns
+            if actionId.hasPrefix("action.status-") {
+                let rawValue = String(actionId.dropFirst("action.status-".count))
+                if let status = WorkflowStatus(rawValue: rawValue),
+                   let worktreeId = appState?.uiState.selectedWorktreeId {
+                    manager.setWorkflowStatus(worktreeId: worktreeId, status: status)
+                }
+            }
         }
     }
 
