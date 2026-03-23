@@ -181,8 +181,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         NSApp.activate(ignoringOtherApps: true)
 
         // Wire terminal switch: when worktree selection changes, attach terminal
-        manager.onTerminalSwitch = { [weak terminalArea] sessionName, workingDirectory in
-            terminalArea?.attachToSession(sessionName: sessionName, workingDirectory: workingDirectory)
+        manager.onTerminalSwitch = { [weak terminalArea] sessionName, workingDirectory, location in
+            terminalArea?.attachToSession(
+                sessionName: sessionName,
+                workingDirectory: workingDirectory,
+                location: location
+            )
         }
 
         // Wire terminal detach: when session is killed, show empty state
@@ -285,6 +289,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     // MARK: - Add Project (Task 3.6)
 
     private func showAddProjectPanel() {
+        guard let window = mainWindowController?.window else { return }
+        let choiceAlert = NSAlert()
+        choiceAlert.alertStyle = .informational
+        choiceAlert.messageText = "Add Project"
+        choiceAlert.informativeText = "Choose where to add the project from."
+        choiceAlert.addButton(withTitle: "Local Folder")
+        choiceAlert.addButton(withTitle: "Remote Project (SSH)")
+        choiceAlert.addButton(withTitle: "Cancel")
+
+        choiceAlert.beginSheetModal(for: window) { [weak self] response in
+            switch response {
+            case .alertFirstButtonReturn:
+                self?.showLocalProjectPanel()
+            case .alertSecondButtonReturn:
+                self?.showRemoteProjectPanel()
+            default:
+                break
+            }
+        }
+    }
+
+    private func showLocalProjectPanel() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -297,6 +323,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
             self?.handleAddProject(path: url.path)
+        }
+    }
+
+    private func showRemoteProjectPanel() {
+        guard let window = mainWindowController?.window else { return }
+
+        let hostField = NSTextField(string: "")
+        hostField.placeholderString = "example.com or ssh alias"
+
+        let pathField = NSTextField(string: "")
+        pathField.placeholderString = "/srv/repos/mori"
+
+        let userField = NSTextField(string: "")
+        userField.placeholderString = "(optional) username"
+
+        let portField = NSTextField(string: "")
+        portField.placeholderString = "(optional) port, e.g. 22"
+
+        let grid = NSGridView(views: [
+            [NSTextField(labelWithString: "Host"), hostField],
+            [NSTextField(labelWithString: "Path"), pathField],
+            [NSTextField(labelWithString: "User"), userField],
+            [NSTextField(labelWithString: "Port"), portField],
+        ])
+        grid.rowSpacing = 8
+        grid.column(at: 0).xPlacement = .trailing
+        grid.column(at: 1).xPlacement = .fill
+        hostField.frame.size.width = 320
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Add Remote Project (SSH)"
+        alert.informativeText = "Connect to a remote git repository and run tmux there."
+        alert.addButton(withTitle: "Add Remote")
+        alert.addButton(withTitle: "Cancel")
+        alert.accessoryView = grid
+
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+
+            let host = hostField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let path = pathField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let userRaw = userField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let portRaw = portField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            var port: Int?
+            if !portRaw.isEmpty {
+                guard let parsed = Int(portRaw), parsed > 0 else {
+                    let errorAlert = NSAlert()
+                    errorAlert.alertStyle = .warning
+                    errorAlert.messageText = "Invalid Port"
+                    errorAlert.informativeText = "Port must be a positive integer."
+                    errorAlert.beginSheetModal(for: window)
+                    return
+                }
+                port = parsed
+            }
+
+            self?.handleAddRemoteProject(
+                host: host,
+                path: path,
+                user: userRaw.isEmpty ? nil : userRaw,
+                port: port
+            )
         }
     }
 
@@ -380,6 +470,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             selectedProjectId: projectId,
             repoPath: project.repoRootPath
         )
+    }
+
+    private func handleAddRemoteProject(host: String, path: String, user: String?, port: Int?) {
+        guard let manager = workspaceManager else { return }
+        Task { @MainActor in
+            do {
+                let project = try await manager.addRemoteProject(host: host, path: path, user: user, port: port)
+                mainWindowController?.updateTitle(projectName: project.name)
+            } catch {
+                let alert = NSAlert()
+                alert.alertStyle = .warning
+                alert.messageText = .localized("Failed to add remote project")
+                alert.informativeText = error.localizedDescription
+                alert.runModal()
+            }
+        }
     }
 
     // MARK: - Settings Window

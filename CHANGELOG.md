@@ -6,7 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-
 ### ✨ Features
 
 - **Task Mode Sidebar**: Alternative sidebar view that groups all worktrees across projects by workflow status (To Do, In Progress, Needs Review, Done, Cancelled) instead of project hierarchy ([#14](https://github.com/vaayne/mori/issues/14))
@@ -16,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Cancelled items hidden by default with reveal toggle; Done group collapsed by default
   - Cross-project worktree selection syncs project context automatically
   - Full localization support (English + Simplified Chinese)
+
+- Add Project now prompts `Local Folder` vs `Remote Project (SSH)`
+- Added SSH-backed remote project support so git/tmux operations can run on remote hosts while keeping Mori UI local
 
 ### 🐛 Bug Fixes
 

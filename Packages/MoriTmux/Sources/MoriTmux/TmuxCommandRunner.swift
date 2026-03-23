@@ -1,5 +1,25 @@
 import Foundation
 
+/// SSH configuration for running tmux commands on a remote host.
+public struct TmuxSSHConfig: Sendable {
+    public let host: String
+    public let user: String?
+    public let port: Int?
+
+    public init(host: String, user: String? = nil, port: Int? = nil) {
+        self.host = host
+        self.user = user
+        self.port = port
+    }
+
+    var target: String {
+        if let user, !user.isEmpty {
+            return "\(user)@\(host)"
+        }
+        return host
+    }
+}
+
 /// Errors that can occur when running tmux commands.
 public enum TmuxError: Error, LocalizedError, Sendable {
     case binaryNotFound
@@ -48,8 +68,11 @@ public actor TmuxCommandRunner {
 
     /// User's shell environment, loaded once on first use.
     private var shellEnvironment: [String: String]?
+    private let sshConfig: TmuxSSHConfig?
 
-    public init() {}
+    public init(sshConfig: TmuxSSHConfig? = nil) {
+        self.sshConfig = sshConfig
+    }
 
     // MARK: - Shell Environment
 
@@ -117,6 +140,9 @@ public actor TmuxCommandRunner {
     /// Resolve the tmux binary path. Checks common locations first,
     /// then uses the user's shell PATH via login shell env.
     public func resolveBinaryPath() async throws -> String {
+        if sshConfig != nil {
+            return "tmux"
+        }
         if let cached = resolvedBinaryPath {
             return cached
         }
@@ -151,6 +177,14 @@ public actor TmuxCommandRunner {
 
     /// Check if tmux is available on this system.
     public func isAvailable() async -> Bool {
+        if sshConfig != nil {
+            do {
+                _ = try await run(["-V"])
+                return true
+            } catch {
+                return false
+            }
+        }
         do {
             _ = try await resolveBinaryPath()
             return true
@@ -168,6 +202,32 @@ public actor TmuxCommandRunner {
 
     /// Run a tmux command with the given arguments array. Returns stdout as a string.
     public func run(_ arguments: [String]) async throws -> String {
+        if let sshConfig {
+            let remoteCommand = (["tmux"] + arguments).map(Self.shellEscape).joined(separator: " ")
+            var sshArguments: [String] = ["-o", "ConnectTimeout=8"]
+            if let port = sshConfig.port {
+                sshArguments += ["-p", "\(port)"]
+            }
+            sshArguments += [sshConfig.target, remoteCommand]
+
+            let (stdout, stderr, exitCode) = try await runProcess(
+                executablePath: "/usr/bin/ssh",
+                arguments: sshArguments,
+                environment: nil
+            )
+
+            if exitCode != 0 {
+                let cmd = "tmux \(arguments.joined(separator: " "))"
+                if exitCode == 1 && stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return ""
+                }
+                let errorMessage = stderr.isEmpty ? stdout : stderr
+                throw TmuxError.executionFailed(command: cmd, exitCode: exitCode, stderr: errorMessage)
+            }
+
+            return stdout
+        }
+
         let binaryPath = try await resolveBinaryPath()
         let env = await loadShellEnvironment()
         let (stdout, stderr, exitCode) = try await runProcess(
@@ -245,5 +305,13 @@ public actor TmuxCommandRunner {
                 }
             }
         }
+    }
+
+    private static func shellEscape(_ value: String) -> String {
+        if value.isEmpty {
+            return "''"
+        }
+        let escaped = value.replacingOccurrences(of: "'", with: "'\"'\"'")
+        return "'\(escaped)'"
     }
 }

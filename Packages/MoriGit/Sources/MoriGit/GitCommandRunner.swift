@@ -1,18 +1,44 @@
 import Foundation
 
+/// SSH configuration for running git commands on a remote host.
+public struct GitSSHConfig: Sendable {
+    public let host: String
+    public let user: String?
+    public let port: Int?
+
+    public init(host: String, user: String? = nil, port: Int? = nil) {
+        self.host = host
+        self.user = user
+        self.port = port
+    }
+
+    var target: String {
+        if let user, !user.isEmpty {
+            return "\(user)@\(host)"
+        }
+        return host
+    }
+}
+
 /// Runs git commands via `Process` (Foundation).
 /// Resolves the git binary path via PATH lookup with common fallback locations.
 public actor GitCommandRunner {
 
     /// Cached path to the git binary, resolved on first use.
     private var resolvedBinaryPath: String?
+    private let sshConfig: GitSSHConfig?
 
-    public init() {}
+    public init(sshConfig: GitSSHConfig? = nil) {
+        self.sshConfig = sshConfig
+    }
 
     // MARK: - Binary Resolution
 
     /// Resolve the git binary path. Checks common locations first, then falls back to `which git`.
     public func resolveBinaryPath() async throws -> String {
+        if sshConfig != nil {
+            return "git"
+        }
         if let cached = resolvedBinaryPath {
             return cached
         }
@@ -49,6 +75,14 @@ public actor GitCommandRunner {
 
     /// Check if git is available on this system.
     public func isAvailable() async -> Bool {
+        if sshConfig != nil {
+            do {
+                _ = try await run(["--version"])
+                return true
+            } catch {
+                return false
+            }
+        }
         do {
             _ = try await resolveBinaryPath()
             return true
@@ -66,6 +100,27 @@ public actor GitCommandRunner {
 
     /// Run a git command with the given arguments array. Returns stdout as a string.
     public func run(_ arguments: [String]) async throws -> String {
+        if let sshConfig {
+            let remoteCommand = (["git"] + arguments).map(Self.shellEscape).joined(separator: " ")
+            var sshArguments: [String] = ["-o", "ConnectTimeout=8"]
+            if let port = sshConfig.port {
+                sshArguments += ["-p", "\(port)"]
+            }
+            sshArguments += [sshConfig.target, remoteCommand]
+
+            let (stdout, exitCode) = try await runProcess(
+                executablePath: "/usr/bin/ssh",
+                arguments: sshArguments
+            )
+
+            if exitCode != 0 {
+                let cmd = "ssh \(sshConfig.target) \(remoteCommand)"
+                throw GitError.executionFailed(command: cmd, exitCode: exitCode, stderr: stdout)
+            }
+
+            return stdout
+        }
+
         let binaryPath = try await resolveBinaryPath()
         let (stdout, exitCode) = try await runProcess(
             executablePath: binaryPath,
@@ -119,5 +174,13 @@ public actor GitCommandRunner {
                 continuation.resume(returning: (output, process.terminationStatus))
             }
         }
+    }
+
+    private static func shellEscape(_ value: String) -> String {
+        if value.isEmpty {
+            return "''"
+        }
+        let escaped = value.replacingOccurrences(of: "'", with: "'\"'\"'")
+        return "'\(escaped)'"
     }
 }

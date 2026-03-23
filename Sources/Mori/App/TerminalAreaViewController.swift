@@ -1,4 +1,5 @@
 import AppKit
+import MoriCore
 import MoriTerminal
 
 /// View controller that hosts terminal surfaces, one per tmux session.
@@ -75,7 +76,8 @@ final class TerminalAreaViewController: NSViewController {
     /// - Parameters:
     ///   - sessionName: The tmux session name (e.g., "mori/main")
     ///   - workingDirectory: The worktree path for the terminal's CWD
-    func attachToSession(sessionName: String, workingDirectory: String) {
+    ///   - location: Local or SSH remote endpoint.
+    func attachToSession(sessionName: String, workingDirectory: String, location: WorkspaceLocation = .local) {
         // Skip if already showing this session
         if sessionName == currentSessionName {
             focusCurrentSurface()
@@ -93,11 +95,27 @@ final class TerminalAreaViewController: NSViewController {
         // Use `has-session` to check first, avoiding tmux parsing the session
         // name as session:window when it contains special characters.
         let escaped = shellEscape(sessionName)
-        let command = "tmux has-session -t \(escaped) 2>/dev/null && tmux attach-session -t \(escaped) || tmux new-session -s \(escaped)"
+        let command: String
+        let effectiveWorkingDirectory: String
+        switch location {
+        case .local:
+            command = "tmux has-session -t \(escaped) 2>/dev/null && tmux attach-session -t \(escaped) || tmux new-session -s \(escaped)"
+            effectiveWorkingDirectory = workingDirectory
+        case .ssh(let ssh):
+            let remoteTmux = "tmux has-session -t \(escaped) 2>/dev/null && tmux attach-session -t \(escaped) || tmux new-session -s \(escaped)"
+            var sshCommand = "ssh -tt"
+            if let port = ssh.port {
+                sshCommand += " -p \(port)"
+            }
+            sshCommand += " \(shellEscape(ssh.target)) \(shellEscape(remoteTmux))"
+            command = sshCommand
+            // Remote paths don't exist locally; use local home to avoid chdir failures.
+            effectiveWorkingDirectory = NSHomeDirectory()
+        }
         let surface = surfaceCache.surface(
             forSession: sessionName,
             command: command,
-            workingDirectory: workingDirectory
+            workingDirectory: effectiveWorkingDirectory
         )
 
         guard surface.frame.size != .zero || view.bounds.size != .zero else {
