@@ -20,6 +20,7 @@ final class TerminalAreaViewController: NSViewController {
     private var currentSurface: NSView?
     private var emptyStateView: NSView?
     private var isHandlingSurfaceExit = false
+    private var isAutoReconnecting = false
 
     /// Callback invoked when the user clicks the empty-state button.
     /// If a worktree is selected (dead session), this should recreate the session.
@@ -81,6 +82,7 @@ final class TerminalAreaViewController: NSViewController {
     ///   - location: Local or SSH remote endpoint.
     func attachToSession(sessionName: String, workingDirectory: String, location: WorkspaceLocation = .local) {
         let sessionKey = sessionIdentityKey(sessionName: sessionName, location: location)
+        isAutoReconnecting = false
 
         // Skip if already showing this session
         if sessionKey == currentSessionKey {
@@ -155,6 +157,7 @@ final class TerminalAreaViewController: NSViewController {
     /// Detach the current terminal surface and evict it from the cache.
     /// The dead surface can't be reused — reconnect creates a fresh one.
     func detach() {
+        isAutoReconnecting = false
         if let sessionKey = currentSessionKey {
             surfaceCache.remove(sessionKey: sessionKey)
         }
@@ -181,6 +184,7 @@ final class TerminalAreaViewController: NSViewController {
 
     private func showEmptyState() {
         guard emptyStateView == nil else { return }
+        let reconnecting = hasSelectedWorktree && isAutoReconnecting
 
         let container = NSView()
         container.translatesAutoresizingMaskIntoConstraints = false
@@ -191,31 +195,45 @@ final class TerminalAreaViewController: NSViewController {
         icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 40, weight: .thin)
         icon.contentTintColor = .tertiaryLabelColor
 
-        let label = NSTextField(labelWithString: hasSelectedWorktree ? .localized("Session ended") : .localized("No active session"))
+        let labelText: String
+        if reconnecting {
+            labelText = .localized("Reconnecting session")
+        } else {
+            labelText = hasSelectedWorktree ? .localized("Session ended") : .localized("No active session")
+        }
+        let label = NSTextField(labelWithString: labelText)
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = .systemFont(ofSize: 16, weight: .medium)
         label.textColor = .secondaryLabelColor
         label.alignment = .center
 
-        let subtitleText: String = hasSelectedWorktree
-            ? .localized("The terminal session has exited")
-            : .localized("Select a worktree or add a project to get started")
+        let subtitleText: String
+        if reconnecting {
+            subtitleText = .localized("Trying to restore remote session...")
+        } else {
+            subtitleText = hasSelectedWorktree
+                ? .localized("The terminal session has exited")
+                : .localized("Select a worktree or add a project to get started")
+        }
         let subtitle = NSTextField(labelWithString: subtitleText)
         subtitle.translatesAutoresizingMaskIntoConstraints = false
         subtitle.font = .systemFont(ofSize: 12)
         subtitle.textColor = .tertiaryLabelColor
         subtitle.alignment = .center
 
-        let buttonTitle: String = hasSelectedWorktree ? .localized("Reconnect") : .localized("Add Project...")
-        let button = NSButton(title: buttonTitle, target: self, action: #selector(emptyStateButtonClicked))
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.bezelStyle = .rounded
-        button.controlSize = .large
-
         container.addSubview(icon)
         container.addSubview(label)
         container.addSubview(subtitle)
-        container.addSubview(button)
+        var button: NSButton?
+        if !reconnecting {
+            let buttonTitle: String = hasSelectedWorktree ? .localized("Reconnect") : .localized("Add Project...")
+            let reconnectButton = NSButton(title: buttonTitle, target: self, action: #selector(emptyStateButtonClicked))
+            reconnectButton.translatesAutoresizingMaskIntoConstraints = false
+            reconnectButton.bezelStyle = .rounded
+            reconnectButton.controlSize = .large
+            container.addSubview(reconnectButton)
+            button = reconnectButton
+        }
 
         NSLayoutConstraint.activate([
             icon.centerXAnchor.constraint(equalTo: container.centerXAnchor),
@@ -226,10 +244,13 @@ final class TerminalAreaViewController: NSViewController {
 
             subtitle.centerXAnchor.constraint(equalTo: container.centerXAnchor),
             subtitle.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 4),
-
-            button.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            button.topAnchor.constraint(equalTo: subtitle.bottomAnchor, constant: 16),
         ])
+        if let button {
+            NSLayoutConstraint.activate([
+                button.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+                button.topAnchor.constraint(equalTo: subtitle.bottomAnchor, constant: 16),
+            ])
+        }
 
         view.addSubview(container)
         NSLayoutConstraint.activate([
@@ -249,6 +270,22 @@ final class TerminalAreaViewController: NSViewController {
 
     @objc private func emptyStateButtonClicked() {
         onCreateSession?()
+    }
+
+    func beginAutoReconnect() {
+        guard hasSelectedWorktree else { return }
+        isAutoReconnecting = true
+        hideEmptyState()
+        showEmptyState()
+    }
+
+    func endAutoReconnect() {
+        guard isAutoReconnecting else { return }
+        isAutoReconnecting = false
+        hideEmptyState()
+        if currentSurface == nil {
+            showEmptyState()
+        }
     }
 
     // MARK: - Helpers
@@ -316,6 +353,7 @@ final class TerminalAreaViewController: NSViewController {
         self.currentSurface = nil
         self.currentSessionKey = nil
         removeResidualTerminalSubviews()
+        isAutoReconnecting = true
         showEmptyState()
 
         // Auto-recover when a worktree is selected (session died / ssh dropped).

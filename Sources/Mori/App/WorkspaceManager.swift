@@ -16,6 +16,8 @@ enum WorkspaceError: Error, LocalizedError {
     case remoteTmuxUnavailable(String)
     case remotePasswordEmpty
     case remotePasswordPersistFailed(String)
+    case remoteSessionNameEmpty
+    case remoteSessionNotFound(String)
 
     var errorDescription: String? {
         switch self {
@@ -37,6 +39,13 @@ enum WorkspaceError: Error, LocalizedError {
             return "Password is required for password authentication."
         case .remotePasswordPersistFailed(let message):
             return "Failed to persist SSH password: \(message)"
+        case .remoteSessionNameEmpty:
+            return .localized("Remote tmux session name cannot be empty.")
+        case .remoteSessionNotFound(let name):
+            return String(
+                format: .localized("tmux session \"%@\" was not found on the remote host."),
+                name
+            )
         }
     }
 }
@@ -616,8 +625,62 @@ final class WorkspaceManager {
         // Reconnect selected worktree if it belongs to this project so terminal
         // immediately uses the updated credentials.
         if let selected = selectedWorktree, selected.projectId == projectId {
-            await reconnectCurrentSession()
+            _ = await reconnectCurrentSession()
         }
+    }
+
+    /// List active tmux session names for a remote project.
+    /// Returns an empty list for local projects or on scan failures.
+    func listRemoteSessionNames(projectId: UUID) async -> [String] {
+        guard let project = appState.projects.first(where: { $0.id == projectId }) else {
+            return []
+        }
+        let location = location(for: project)
+        guard case .ssh = location else { return [] }
+
+        let tmux = tmuxBackend(for: location)
+        let sessions = (try? await tmux.scanAll()) ?? []
+        return sessions.map(\.name).sorted()
+    }
+
+    /// Attach the project's main worktree to an existing remote tmux session.
+    func attachMainWorktreeToRemoteSession(
+        projectId: UUID,
+        sessionName: String
+    ) async throws {
+        guard let project = appState.projects.first(where: { $0.id == projectId }) else {
+            throw WorkspaceError.projectNotFound
+        }
+        let location = location(for: project)
+        guard case .ssh = location else {
+            throw WorkspaceError.projectNotRemote
+        }
+
+        let trimmed = sessionName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw WorkspaceError.remoteSessionNameEmpty
+        }
+
+        let tmux = tmuxBackend(for: location)
+        let sessions = try await tmux.scanAll()
+        guard sessions.contains(where: { $0.name == trimmed }) else {
+            throw WorkspaceError.remoteSessionNotFound(trimmed)
+        }
+
+        guard let worktreeIndex = appState.worktrees.firstIndex(where: {
+            $0.projectId == projectId && $0.isMainWorktree
+        }) ?? appState.worktrees.firstIndex(where: { $0.projectId == projectId }) else {
+            throw WorkspaceError.projectNotFound
+        }
+
+        appState.worktrees[worktreeIndex].tmuxSessionName = trimmed
+        try worktreeRepo.save(appState.worktrees[worktreeIndex])
+
+        let worktree = appState.worktrees[worktreeIndex]
+        if appState.uiState.selectedProjectId != projectId {
+            appState.uiState.selectedProjectId = projectId
+        }
+        selectWorktree(worktree.id)
     }
 
     // MARK: - Create Worktree
@@ -1675,17 +1738,20 @@ final class WorkspaceManager {
     }
 
     /// Recreate the tmux session for the current worktree and re-attach the terminal.
-    func reconnectCurrentSession() async {
-        guard let worktree = selectedWorktree else { return }
-        let sessionReady = await ensureTmuxSession(for: worktree, showErrors: true)
+    /// Returns true when re-attach succeeded.
+    @discardableResult
+    func reconnectCurrentSession(showErrors: Bool = true) async -> Bool {
+        guard let worktree = selectedWorktree else { return false }
+        let sessionReady = await ensureTmuxSession(for: worktree, showErrors: showErrors)
         guard sessionReady else {
             onTerminalDetach?()
-            return
+            return false
         }
         await refreshRuntimeState()
         if let sessionName = worktree.tmuxSessionName {
             onTerminalSwitch?(sessionName, worktree.path, location(for: worktree))
         }
+        return true
     }
 
     private func navigateWindow(offset: Int) {

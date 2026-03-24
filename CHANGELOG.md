@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a VS Code-style top input wizard for remote host connection (`[user@]host[:port]`, auth mode, path)
 - Added command palette action `Remote: Connect to Host...`
 - Remote add now allows non-git directories (git integration is best-effort, tmux workflow still works)
+- Remote connect now detects active tmux sessions and lets you attach the project to an existing session so sidebar tabs/panes reflect that live workspace
 
 ### 🐛 Bug Fixes
 
@@ -40,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remote tmux command PATH bootstrap now includes standard Linux/macOS system paths, reducing false negatives on non-login SSH shells
 - Ghostty surface close events now trigger automatic session recovery so "Process exited" remote terminals reconnect instead of staying stuck
 - Window-close safety now checks live tmux session window counts (not only cached sidebar state) to avoid races that accidentally kill the last remote window/session
+- Remote terminal now performs automatic reconnect retries with a dedicated "Reconnecting session" state to provide a mosh-like continuity experience on transient SSH drops
 
 ## [0.1.0] - 2026-03-20
 

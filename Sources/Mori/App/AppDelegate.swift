@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private var settingsWindowController: NSWindowController?
     private var configFile: GhosttyConfigFile?
     private var proxyApplyTask: Task<Void, Never>?
+    private var reconnectTask: Task<Void, Never>?
     private var remoteConnectWizardController: RemoteConnectWizardController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -79,8 +80,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         terminalArea.onCreateSession = { [weak self] in
             guard let self else { return }
             if let manager = self.workspaceManager, manager.hasSelectedWorktree {
-                // Worktree exists but session died — recreate it
-                Task { await manager.reconnectCurrentSession() }
+                // Worktree exists but session died — auto-retry reconnect.
+                self.startAutoReconnect()
             } else {
                 self.showAddProjectPanel()
             }
@@ -274,6 +275,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
         // Stop coordinated polling
         workspaceManager?.stopPolling()
+        reconnectTask?.cancel()
+        reconnectTask = nil
 
         // Persist UI state before exit
         workspaceManager?.saveUIStateOnTerminate()
@@ -354,6 +357,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                     password: input.password
                 )
                 self.mainWindowController?.updateTitle(projectName: project.name)
+                await self.offerAttachToExistingRemoteSessionIfNeeded(projectId: project.id)
                 return .success(())
             } catch {
                 return .failure(error)
@@ -361,6 +365,75 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
         remoteConnectWizardController = wizard
         wizard.present(over: mainWindowController?.window)
+    }
+
+    private func offerAttachToExistingRemoteSessionIfNeeded(projectId: UUID) async {
+        guard let manager = workspaceManager,
+              let state = appState,
+              let project = state.projects.first(where: { $0.id == projectId }),
+              case .ssh = project.resolvedLocation else { return }
+
+        let sessionNames = await manager.listRemoteSessionNames(projectId: projectId)
+        guard !sessionNames.isEmpty else { return }
+
+        guard let chosen = await promptForRemoteSessionAttachment(
+            projectName: project.name,
+            sessionNames: sessionNames
+        ) else { return }
+
+        do {
+            try await manager.attachMainWorktreeToRemoteSession(
+                projectId: projectId,
+                sessionName: chosen
+            )
+        } catch {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = .localized("Failed to attach session")
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+        }
+    }
+
+    private func promptForRemoteSessionAttachment(
+        projectName: String,
+        sessionNames: [String]
+    ) async -> String? {
+        guard let window = mainWindowController?.window else { return nil }
+
+        let createNewOption = String.localized("Create New Managed Session")
+        let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 320, height: 26), pullsDown: false)
+        popup.addItem(withTitle: createNewOption)
+        popup.menu?.addItem(.separator())
+        for name in sessionNames {
+            popup.addItem(withTitle: name)
+        }
+        if popup.numberOfItems > 2 {
+            popup.selectItem(at: 2)
+        }
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = .localized("Attach Existing tmux Session")
+        alert.informativeText = String(
+            format: .localized("Remote host has active tmux sessions. Choose one to attach for \"%@\"."),
+            projectName
+        )
+        alert.accessoryView = popup
+        alert.addButton(withTitle: .localized("Attach Session"))
+        alert.addButton(withTitle: .localized("Skip"))
+
+        return await withCheckedContinuation { continuation in
+            alert.beginSheetModal(for: window) { response in
+                guard response == .alertFirstButtonReturn,
+                      let selected = popup.selectedItem?.title,
+                      selected != createNewOption else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: selected)
+            }
+        }
     }
 
     private func handleAddProject(path: String) {
@@ -1091,6 +1164,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             projectName: appState?.selectedProject?.name,
             worktreeName: appState?.selectedWorktree?.branch ?? appState?.selectedWorktree?.name
         )
+    }
+
+    private func startAutoReconnect() {
+        reconnectTask?.cancel()
+        guard let manager = workspaceManager,
+              manager.hasSelectedWorktree else { return }
+        terminalAreaController?.beginAutoReconnect()
+
+        reconnectTask = Task { [weak self, weak manager] in
+            guard let self, let manager else { return }
+
+            let maxAttempts = 8
+            for attempt in 0..<maxAttempts {
+                if Task.isCancelled { return }
+                let showErrors = (attempt == maxAttempts - 1)
+                let ok = await manager.reconnectCurrentSession(showErrors: showErrors)
+                if ok {
+                    self.terminalAreaController?.endAutoReconnect()
+                    self.reconnectTask = nil
+                    return
+                }
+
+                let delaySeconds = min(1 << min(attempt, 3), 8)
+                try? await Task.sleep(nanoseconds: UInt64(delaySeconds) * 500_000_000)
+            }
+
+            self.terminalAreaController?.endAutoReconnect()
+            self.reconnectTask = nil
+        }
     }
 
     // MARK: - Settings (Cmd+,)
