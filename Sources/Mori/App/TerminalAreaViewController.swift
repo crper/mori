@@ -19,6 +19,7 @@ final class TerminalAreaViewController: NSViewController {
     private var currentSessionKey: String?
     private var currentSurface: NSView?
     private var emptyStateView: NSView?
+    private var isHandlingSurfaceExit = false
 
     /// Callback invoked when the user clicks the empty-state button.
     /// If a worktree is selected (dead session), this should recreate the session.
@@ -35,6 +36,7 @@ final class TerminalAreaViewController: NSViewController {
         self.terminalHost = host
         self.surfaceCache = TerminalSurfaceCache(maxSize: 3, terminalHost: host)
         super.init(nibName: nil, bundle: nil)
+        installSurfaceCloseObserver()
     }
 
     @available(*, unavailable)
@@ -104,7 +106,8 @@ final class TerminalAreaViewController: NSViewController {
             command = "tmux has-session -t \(escaped) 2>/dev/null && tmux attach-session -t \(escaped) || tmux new-session -s \(escaped)"
             effectiveWorkingDirectory = workingDirectory
         case .ssh(let ssh):
-            let remoteTmux = "tmux has-session -t \(escaped) 2>/dev/null && tmux attach-session -t \(escaped) || tmux new-session -s \(escaped)"
+            let remoteTmuxCore = "tmux has-session -t \(escaped) 2>/dev/null && tmux attach-session -t \(escaped) || tmux new-session -s \(escaped)"
+            let remoteTmux = "export PATH=\"/opt/homebrew/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/snap/bin:$PATH\"; \(remoteTmuxCore)"
             var sshCommand = "ssh -tt"
             for option in SSHControlOptions.sshOptions(for: ssh) {
                 sshCommand += " \(shellEscape(option))"
@@ -264,5 +267,46 @@ final class TerminalAreaViewController: NSViewController {
         alert.alertStyle = .warning
         alert.addButton(withTitle: .localized("OK"))
         alert.beginSheetModal(for: window)
+    }
+
+    // MARK: - Surface Exit Recovery
+
+    private func installSurfaceCloseObserver() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleGhosttySurfaceClosedNotification(_:)),
+            name: .ghosttySurfaceDidClose,
+            object: nil
+        )
+    }
+
+    @objc private func handleGhosttySurfaceClosedNotification(_ notification: Notification) {
+        handleSurfaceClosed(notification)
+    }
+
+    private func handleSurfaceClosed(_ notification: Notification) {
+        guard !isHandlingSurfaceExit else { return }
+        guard let userInfo = notification.userInfo,
+              let userdata = userInfo["userdata"] as? UInt,
+              let currentSurface else { return }
+
+        let currentUserdata = UInt(bitPattern: Unmanaged.passUnretained(currentSurface).toOpaque())
+        guard userdata == currentUserdata else { return }
+
+        isHandlingSurfaceExit = true
+        defer { isHandlingSurfaceExit = false }
+
+        // Remove dead surface from cache so reconnect creates a fresh process.
+        if let sessionKey = currentSessionKey {
+            surfaceCache.remove(sessionKey: sessionKey)
+        }
+        self.currentSurface = nil
+        self.currentSessionKey = nil
+        showEmptyState()
+
+        // Auto-recover when a worktree is selected (session died / ssh dropped).
+        if hasSelectedWorktree {
+            onCreateSession?()
+        }
     }
 }

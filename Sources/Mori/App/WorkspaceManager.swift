@@ -127,8 +127,30 @@ final class WorkspaceManager {
         appState.worktrees = allWorktrees
         appState.uiState = try uiStateRepo.fetch()
 
+        // Backfill missing tmux session names from legacy data so every
+        // worktree can be mapped to a stable tmux session.
+        backfillWorktreeSessionNamesIfNeeded()
+
         // Validate project paths — mark unavailable if path no longer exists
         validateProjectPaths()
+    }
+
+    private func backfillWorktreeSessionNamesIfNeeded() {
+        for i in appState.worktrees.indices {
+            let existing = appState.worktrees[i].tmuxSessionName?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard existing?.isEmpty != false else { continue }
+            guard let project = appState.projects.first(where: { $0.id == appState.worktrees[i].projectId }) else {
+                continue
+            }
+            let worktreeName = appState.worktrees[i].branch ?? appState.worktrees[i].name
+            let sessionName = SessionNaming.sessionName(
+                projectShortName: project.shortName,
+                worktree: worktreeName
+            )
+            appState.worktrees[i].tmuxSessionName = sessionName
+            try? worktreeRepo.save(appState.worktrees[i])
+        }
     }
 
     /// Check each worktree path and mark as unavailable if the directory is gone.
@@ -338,12 +360,14 @@ final class WorkspaceManager {
         // Ensure tmux session exists, check branch, then switch terminal
         Task {
             await refreshWorktreeBranch(worktreeId: worktreeId)
-            await ensureTmuxSession(for: worktree)
+            let sessionReady = await ensureTmuxSession(for: worktree, showErrors: true)
             await refreshRuntimeState()
 
             // Notify terminal to switch to this worktree's session
-            if let sessionName = worktree.tmuxSessionName {
+            if sessionReady, let sessionName = worktree.tmuxSessionName {
                 onTerminalSwitch?(sessionName, worktree.path, location(for: worktree))
+            } else {
+                onTerminalDetach?()
             }
         }
 
@@ -562,8 +586,6 @@ final class WorkspaceManager {
             } catch {
                 throw WorkspaceError.remotePasswordPersistFailed(error.localizedDescription)
             }
-        } else {
-            SSHCredentialStore.deletePassword(for: currentSSH)
         }
 
         // Invalidate both old and new backend cache entries so future operations
@@ -572,6 +594,14 @@ final class WorkspaceManager {
         invalidateRemoteBackends(for: updatedSSH)
 
         let updatedLocation = WorkspaceLocation.ssh(updatedSSH)
+        let updatedTmux = tmuxBackend(for: updatedLocation)
+        guard await updatedTmux.isAvailable() else {
+            throw WorkspaceError.remoteTmuxUnavailable(updatedSSH.target)
+        }
+
+        if authMethod == .publicKey {
+            SSHCredentialStore.deletePassword(for: currentSSH)
+        }
 
         // Persist project location
         appState.projects[projectIndex].location = updatedLocation
@@ -914,18 +944,85 @@ final class WorkspaceManager {
         try? worktreeRepo.save(appState.worktrees[index])
     }
 
+    /// Best-effort classification for missing tmux failures.
+    private func isTmuxUnavailableError(_ error: any Error) -> Bool {
+        guard let tmuxError = error as? TmuxError else { return false }
+        switch tmuxError {
+        case .binaryNotFound:
+            return true
+        case .executionFailed(_, let exitCode, let stderr):
+            return exitCode == 127 && stderr.contains("tmux: command not found")
+        default:
+            return false
+        }
+    }
+
+    private func tmuxUnavailableMessage(for worktree: Worktree) -> String {
+        switch location(for: worktree) {
+        case .local:
+            return .localized("Mori requires tmux to manage terminal sessions. Please install tmux and relaunch the app.\n\nInstall via Homebrew:\n  brew install tmux\n\nOr via MacPorts:\n  sudo port install tmux")
+        case .ssh(let ssh):
+            return WorkspaceError.remoteTmuxUnavailable(ssh.target).localizedDescription
+        }
+    }
+
+    private func showTmuxOperationError(
+        title: String,
+        error: any Error,
+        worktree: Worktree
+    ) {
+        if isTmuxUnavailableError(error) {
+            showErrorAlert(title: .localized("Terminal Error"), message: tmuxUnavailableMessage(for: worktree))
+            return
+        }
+        showErrorAlert(title: title, message: error.localizedDescription)
+    }
+
     /// Ensure a tmux session exists for the given worktree, creating one if needed.
-    private func ensureTmuxSession(for worktree: Worktree) async {
-        guard let sessionName = worktree.tmuxSessionName else { return }
+    /// Returns false if session scan/create failed.
+    @discardableResult
+    private func ensureTmuxSession(for worktree: Worktree, showErrors: Bool = false) async -> Bool {
+        guard let sessionName = worktree.tmuxSessionName else { return false }
         let tmux = tmuxBackend(for: worktree)
 
-        let sessions = (try? await tmux.scanAll()) ?? []
-        let exists = sessions.contains { $0.name == sessionName }
-
-        if !exists {
-            _ = try? await tmux.createSession(name: sessionName, cwd: worktree.path)
-            await onSessionCreated?()
+        let sessions: [TmuxSession]
+        do {
+            sessions = try await tmux.scanAll()
+        } catch {
+            if showErrors {
+                showTmuxOperationError(title: .localized("Terminal Error"), error: error, worktree: worktree)
+            }
+            return false
         }
+        let session = sessions.first { $0.name == sessionName }
+
+        if session == nil {
+            do {
+                _ = try await tmux.createSession(name: sessionName, cwd: worktree.path)
+                await onSessionCreated?()
+                return true
+            } catch {
+                if showErrors {
+                    showTmuxOperationError(title: .localized("Terminal Error"), error: error, worktree: worktree)
+                }
+                return false
+            }
+        }
+
+        // tmux sessions normally always have at least one window, but if a
+        // session is left empty we recreate a window so each worktree keeps
+        // a live pane target.
+        if session?.windows.isEmpty == true {
+            do {
+                _ = try await tmux.createWindow(sessionId: sessionName, name: nil, cwd: worktree.path)
+            } catch {
+                if showErrors {
+                    showTmuxOperationError(title: .localized("Terminal Error"), error: error, worktree: worktree)
+                }
+                return false
+            }
+        }
+        return true
     }
 
     /// Refresh runtime windows/panes from tmux into AppState.
@@ -1019,13 +1116,16 @@ final class WorkspaceManager {
             )
         }()
 
-        let sessionsByEndpoint = await tmuxResult
+        var sessionsByEndpoint = await tmuxResult
         let gitStatuses = await gitResult
 
         // Update runtime state from tmux
         if !sessionsByEndpoint.isEmpty {
             // Detect dead sessions and auto-recreate before updating state
-            await detectAndRecoverDeadSessions(sessionsByEndpoint: sessionsByEndpoint)
+            let recovered = await detectAndRecoverDeadSessions(sessionsByEndpoint: sessionsByEndpoint)
+            if recovered {
+                sessionsByEndpoint = await scanSessionsByEndpoint()
+            }
 
             latestSessionsByEndpoint = sessionsByEndpoint
 
@@ -1410,7 +1510,8 @@ final class WorkspaceManager {
               let sessionName = worktree.tmuxSessionName else { return }
         let tmux = tmuxBackend(for: worktree)
         do {
-            await ensureTmuxSession(for: worktree)
+            let sessionReady = await ensureTmuxSession(for: worktree, showErrors: true)
+            guard sessionReady else { return }
             _ = try await tmux.createWindow(sessionId: sessionName, name: nil, cwd: worktree.path)
             await refreshRuntimeState()
             // Re-attach terminal to the (possibly recreated) session
@@ -1419,7 +1520,11 @@ final class WorkspaceManager {
             // Fire onWindowCreate hook
             fireHook(event: .onWindowCreate, worktreeId: worktree.id)
         } catch {
-            showErrorAlert(title: .localized("Failed to create window"), message: error.localizedDescription)
+            showTmuxOperationError(
+                title: .localized("Failed to create window"),
+                error: error,
+                worktree: worktree
+            )
         }
     }
 
@@ -1430,6 +1535,8 @@ final class WorkspaceManager {
         let tmux = tmuxBackend(for: worktree)
 
         do {
+            let sessionReady = await ensureTmuxSession(for: worktree, showErrors: true)
+            guard sessionReady else { return }
             // Target the session — tmux splits whatever pane is currently active.
             // Don't use cached findActivePaneId which can be stale between polls.
             _ = try await tmux.splitPane(
@@ -1440,7 +1547,11 @@ final class WorkspaceManager {
             )
             await refreshRuntimeState()
         } catch {
-            showErrorAlert(title: .localized("Failed to split pane"), message: error.localizedDescription)
+            showTmuxOperationError(
+                title: .localized("Failed to split pane"),
+                error: error,
+                worktree: worktree
+            )
         }
     }
 
@@ -1460,6 +1571,14 @@ final class WorkspaceManager {
         guard let worktree = selectedWorktree,
               let sessionName = worktree.tmuxSessionName else { return }
         let tmux = tmuxBackend(for: worktree)
+        let windowsInSession = appState.runtimeWindows.filter { $0.worktreeId == worktree.id }
+        let activeWindow = windowsInSession.first(where: { $0.tmuxWindowId == appState.uiState.selectedWindowId })
+            ?? windowsInSession.first
+
+        // Keep at least one pane alive per worktree session.
+        if windowsInSession.count <= 1, (activeWindow?.paneCount ?? 1) <= 1 {
+            return
+        }
 
         do {
             // Target the session — tmux kills whatever pane is currently active.
@@ -1486,7 +1605,12 @@ final class WorkspaceManager {
               let windowId = appState.uiState.selectedWindowId else { return }
         let tmux = tmuxBackend(for: worktree)
 
-        let windowsInSession = appState.runtimeWindows.filter { $0.worktreeId == worktree.id }
+        let cachedWindowsInSession = appState.runtimeWindows.filter { $0.worktreeId == worktree.id }
+        let liveWindowCount = await actualWindowCount(for: worktree, sessionName: sessionName)
+        let windowCount = liveWindowCount ?? cachedWindowsInSession.count
+        if windowCount <= 1 {
+            return
+        }
 
         // Fire onWindowClose hook before kill
         let windowTitle = appState.runtimeWindows
@@ -1494,21 +1618,13 @@ final class WorkspaceManager {
         fireHook(event: .onWindowClose, worktreeId: worktree.id, windowName: windowTitle)
 
         do {
-            if windowsInSession.count <= 1 {
-                // Last window — kill the entire session and detach terminal
-                try await tmux.killSession(id: sessionName)
-                appState.uiState.selectedWindowId = nil
-                appState.runtimeWindows.removeAll { $0.worktreeId == worktree.id }
-                onTerminalDetach?()
-            } else {
-                let rawWindowId = WorkspaceEndpoint.rawWindowId(from: windowId)
-                try await tmux.killWindow(sessionId: sessionName, windowId: rawWindowId)
-                appState.uiState.selectedWindowId = nil
-                await refreshRuntimeState()
-                // Auto-select the first remaining window
-                if let first = appState.runtimeWindows.first(where: { $0.worktreeId == worktree.id }) {
-                    selectWindow(first.tmuxWindowId)
-                }
+            let rawWindowId = WorkspaceEndpoint.rawWindowId(from: windowId)
+            try await tmux.killWindow(sessionId: sessionName, windowId: rawWindowId)
+            appState.uiState.selectedWindowId = nil
+            await refreshRuntimeState()
+            // Auto-select the first remaining window
+            if let first = appState.runtimeWindows.first(where: { $0.worktreeId == worktree.id }) {
+                selectWindow(first.tmuxWindowId)
             }
         } catch {
             showErrorAlert(title: .localized("Failed to close window"), message: error.localizedDescription)
@@ -1523,26 +1639,22 @@ final class WorkspaceManager {
         let tmux = tmuxBackend(for: worktree)
         let rawWindowId = rawWindowId(from: rw)
 
-        let windowsInSession = appState.runtimeWindows.filter { $0.worktreeId == worktree.id }
+        let cachedWindowsInSession = appState.runtimeWindows.filter { $0.worktreeId == worktree.id }
+        let liveWindowCount = await actualWindowCount(for: worktree, sessionName: sessionName)
+        let windowCount = liveWindowCount ?? cachedWindowsInSession.count
+        if windowCount <= 1 {
+            return
+        }
 
         fireHook(event: .onWindowClose, worktreeId: worktree.id, windowName: rw.title)
 
         do {
-            if windowsInSession.count <= 1 {
-                try await tmux.killSession(id: sessionName)
-                appState.runtimeWindows.removeAll { $0.worktreeId == worktree.id }
-                if worktree.id == appState.uiState.selectedWorktreeId {
-                    appState.uiState.selectedWindowId = nil
-                    onTerminalDetach?()
-                }
-            } else {
-                try await tmux.killWindow(sessionId: sessionName, windowId: rawWindowId)
-                await refreshRuntimeState()
-                if windowId == appState.uiState.selectedWindowId {
-                    appState.uiState.selectedWindowId = nil
-                    if let first = appState.runtimeWindows.first(where: { $0.worktreeId == worktree.id }) {
-                        selectWindow(first.tmuxWindowId)
-                    }
+            try await tmux.killWindow(sessionId: sessionName, windowId: rawWindowId)
+            await refreshRuntimeState()
+            if windowId == appState.uiState.selectedWindowId {
+                appState.uiState.selectedWindowId = nil
+                if let first = appState.runtimeWindows.first(where: { $0.worktreeId == worktree.id }) {
+                    selectWindow(first.tmuxWindowId)
                 }
             }
         } catch {
@@ -1565,7 +1677,11 @@ final class WorkspaceManager {
     /// Recreate the tmux session for the current worktree and re-attach the terminal.
     func reconnectCurrentSession() async {
         guard let worktree = selectedWorktree else { return }
-        await ensureTmuxSession(for: worktree)
+        let sessionReady = await ensureTmuxSession(for: worktree, showErrors: true)
+        guard sessionReady else {
+            onTerminalDetach?()
+            return
+        }
         await refreshRuntimeState()
         if let sessionName = worktree.tmuxSessionName {
             onTerminalSwitch?(sessionName, worktree.path, location(for: worktree))
@@ -1596,6 +1712,13 @@ final class WorkspaceManager {
         return session.windows.first?.panes.first?.paneId
     }
 
+    /// Fetch live window count for a session from tmux to avoid stale UI races.
+    private func actualWindowCount(for worktree: Worktree, sessionName: String) async -> Int? {
+        let tmux = tmuxBackend(for: worktree)
+        let sessions = try? await tmux.scanAll()
+        return sessions?.first(where: { $0.name == sessionName })?.windows.count
+    }
+
     /// Open a CLI tool (e.g. lazygit, yazi) in a new tmux window at the active pane's cwd.
     /// The window auto-names after the tool and closes when the tool exits.
     func openToolWindow(command: String) async {
@@ -1607,13 +1730,18 @@ final class WorkspaceManager {
         let cwd = activePaneCwd() ?? worktree.path
 
         do {
-            await ensureTmuxSession(for: worktree)
+            let sessionReady = await ensureTmuxSession(for: worktree, showErrors: true)
+            guard sessionReady else { return }
             let window = try await tmux.createWindow(sessionId: sessionName, name: command, cwd: cwd)
             try await tmux.sendKeys(sessionId: sessionName, paneId: window.windowId, keys: command)
             await refreshRuntimeState()
             onTerminalSwitch?(sessionName, worktree.path, location(for: worktree))
         } catch {
-            showErrorAlert(title: .localized("Failed to open \(command)"), message: error.localizedDescription)
+            showTmuxOperationError(
+                title: .localized("Failed to open \(command)"),
+                error: error,
+                worktree: worktree
+            )
         }
     }
 
@@ -1713,24 +1841,34 @@ final class WorkspaceManager {
 
     // MARK: - Session Death Detection
 
-    /// Called during polling to detect and handle dead sessions for active worktrees.
-    /// Auto-recreates sessions and re-attaches if the selected worktree's session died.
-    func detectAndRecoverDeadSessions(sessionsByEndpoint: [String: [TmuxSession]]) async {
-        guard let worktree = appState.selectedWorktree,
-              let sessionName = worktree.tmuxSessionName else { return }
-        let endpointKey = endpointKey(for: worktree)
-        let sessions = sessionsByEndpoint[endpointKey] ?? []
-        let tmux = tmuxBackend(for: worktree)
+    /// Called during polling to detect and recover missing sessions for active worktrees.
+    /// Returns true when any session was recreated, so caller can rescan immediately.
+    func detectAndRecoverDeadSessions(sessionsByEndpoint: [String: [TmuxSession]]) async -> Bool {
+        var recoveredAny = false
 
-        let sessionAlive = sessions.contains { $0.name == sessionName }
-        let hadWindows = appState.runtimeWindows.contains { $0.worktreeId == worktree.id }
+        for worktree in appState.worktrees where worktree.status == .active {
+            guard let sessionName = worktree.tmuxSessionName else { continue }
+            let endpointKey = endpointKey(for: worktree)
+            let sessions = sessionsByEndpoint[endpointKey] ?? []
+            let sessionAlive = sessions.contains { $0.name == sessionName }
+            guard !sessionAlive else { continue }
 
-        if !sessionAlive && hadWindows {
-            // Session died — auto-recreate and re-attach
-            _ = try? await tmux.createSession(name: sessionName, cwd: worktree.path)
+            let tmux = tmuxBackend(for: worktree)
+            let recreated = (try? await tmux.createSession(name: sessionName, cwd: worktree.path)) != nil
+            guard recreated else { continue }
+
+            recoveredAny = true
             await onSessionCreated?()
-            onTerminalSwitch?(sessionName, worktree.path, location(for: worktree))
+
+            if worktree.id == appState.uiState.selectedWorktreeId {
+                // Force new terminal process; same session key can otherwise
+                // keep a dead surface cached after remote shell exit.
+                onTerminalDetach?()
+                onTerminalSwitch?(sessionName, worktree.path, location(for: worktree))
+            }
         }
+
+        return recoveredAny
     }
 
     // MARK: - Launch Restoration (Task 5.2)
@@ -1768,12 +1906,14 @@ final class WorkspaceManager {
         // Ensure tmux session exists and connect terminal
         if let worktree = appState.worktrees.first(where: { $0.id == worktreeId }) {
             Task {
-                await ensureTmuxSession(for: worktree)
+                let sessionReady = await ensureTmuxSession(for: worktree, showErrors: true)
                 await refreshRuntimeState()
 
                 // Notify terminal to attach
-                if let sessionName = worktree.tmuxSessionName {
+                if sessionReady, let sessionName = worktree.tmuxSessionName {
                     onTerminalSwitch?(sessionName, worktree.path, location(for: worktree))
+                } else {
+                    onTerminalDetach?()
                 }
 
                 // 3. Restore selected window (after runtime state is loaded)

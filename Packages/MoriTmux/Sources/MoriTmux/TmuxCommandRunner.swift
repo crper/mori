@@ -215,7 +215,7 @@ public actor TmuxCommandRunner {
     public func run(_ arguments: [String]) async throws -> String {
         if let sshConfig {
             let tmuxCommand = (["tmux"] + arguments).map(Self.shellEscape).joined(separator: " ")
-            let remoteCommand = "export PATH=\"\\$PATH:/opt/homebrew/bin:/usr/local/bin\"; \(tmuxCommand)"
+            let remoteCommand = "export PATH=\"/opt/homebrew/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/snap/bin:\\$PATH\"; \(tmuxCommand)"
 
             var sshArguments: [String] = ["-o", "ConnectTimeout=8"]
             sshArguments += sshConfig.sshOptions
