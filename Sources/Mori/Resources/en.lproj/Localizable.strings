@@ -114,6 +114,7 @@
 "Zoom" = "Zoom";
 "tmux not found" = "tmux not found";
 "tmux session \"%@\" was not found on the remote host." = "tmux session \"%@\" was not found on the remote host.";
+"tmux session \"%@\" is already attached to another workspace. Choose a different session or create a new one." = "tmux session \"%@\" is already attached to another workspace. Choose a different session or create a new one.";
 "to create" = "to create";
 
 /* Task Mode - Command Palette */
@@ -122,4 +123,6 @@
 "Set %@ to %@" = "Set %@ to %@";
 "Remote host has active tmux sessions. Choose one to attach for \"%@\"." = "Remote host has active tmux sessions. Choose one to attach for \"%@\".";
 "Remote tmux session name cannot be empty." = "Remote tmux session name cannot be empty.";
+"Failed to access SSH password from Keychain" = "Failed to access SSH password from Keychain";
+"Mori could not read credentials for \"%@\". Re-enter credentials or unlock Keychain.\n\n%@" = "Mori could not read credentials for \"%@\". Re-enter credentials or unlock Keychain.\n\n%@";
 "Skip" = "Skip";

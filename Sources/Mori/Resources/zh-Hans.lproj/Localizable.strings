@@ -114,6 +114,7 @@
 "Zoom" = "缩放";
 "tmux not found" = "未找到 tmux";
 "tmux session \"%@\" was not found on the remote host." = "远端主机上未找到 tmux 会话“%@”。";
+"tmux session \"%@\" is already attached to another workspace. Choose a different session or create a new one." = "tmux 会话“%@”已绑定到另一个工作区。请选择其他会话或创建新会话。";
 "to create" = "创建";
 
 /* Task Mode - Command Palette */
@@ -122,4 +123,6 @@
 "Set %@ to %@" = "将 %@ 设为 %@";
 "Remote host has active tmux sessions. Choose one to attach for \"%@\"." = "远端主机存在活跃 tmux 会话。请选择要接入到“%@”的会话。";
 "Remote tmux session name cannot be empty." = "远端 tmux 会话名不能为空。";
+"Failed to access SSH password from Keychain" = "无法从钥匙串读取 SSH 密码";
+"Mori could not read credentials for \"%@\". Re-enter credentials or unlock Keychain.\n\n%@" = "Mori 无法读取“%@”的凭据。请重新输入凭据或解锁钥匙串。\n\n%@";
 "Skip" = "跳过";

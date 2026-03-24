@@ -112,7 +112,7 @@ final class TerminalAreaViewController: NSViewController {
             let remoteTmuxCore = "tmux has-session -t \(escaped) 2>/dev/null && tmux attach-session -t \(escaped) || tmux new-session -s \(escaped)"
             let remoteTmux = "export PATH=\"/opt/homebrew/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/snap/bin:$PATH\"; \(remoteTmuxCore)"
             var sshCommand = "ssh -tt"
-            for option in SSHControlOptions.sshOptions(for: ssh) {
+            for option in sshOptionsForInteractiveTerminal(ssh) {
                 sshCommand += " \(shellEscape(option))"
             }
             if let port = ssh.port {
@@ -292,6 +292,14 @@ final class TerminalAreaViewController: NSViewController {
 
     private func shellEscape(_ str: String) -> String {
         "'" + str.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    private func sshOptionsForInteractiveTerminal(_ ssh: SSHWorkspaceLocation) -> [String] {
+        let options = SSHCommandSupport.connectivityOptions() + SSHControlOptions.sshOptions(for: ssh)
+        var filtered = SSHCommandSupport.removingBatchMode(from: options)
+        // For terminal attach we prefer interactive fallback over immediate failure.
+        filtered += ["-o", "BatchMode=no"]
+        return filtered
     }
 
     private func sessionIdentityKey(sessionName: String, location: WorkspaceLocation) -> String {

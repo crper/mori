@@ -42,6 +42,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ghostty surface close events now trigger automatic session recovery so "Process exited" remote terminals reconnect instead of staying stuck
 - Window-close safety now checks live tmux session window counts (not only cached sidebar state) to avoid races that accidentally kill the last remote window/session
 - Remote terminal now performs automatic reconnect retries with a dedicated "Reconnecting session" state to provide a mosh-like continuity experience on transient SSH drops
+- Remote session discovery/ensure now uses lightweight tmux queries (`list-sessions` / targeted `list-windows`) instead of deep full-tree scans, preventing false "no session" failures from unrelated pane/window scan errors
+- Remote terminal SSH attach now forces `BatchMode=no` for interactive surfaces so password-auth sessions can recover instead of exiting immediately when no control master is active
+- Runtime window indexing now tolerates duplicate window IDs safely and de-duplicates collisions, preventing startup/IPC crashes from stale overlapping session mappings
+- Startup now auto-normalizes conflicting tmux session bindings per endpoint, and remote attach now blocks binding a session already used by another workspace
+- SSH password bootstrap no longer injects secrets into inherited process environments; askpass now uses a minimal env and securely permissioned temp scripts
+- SSH control socket paths now use fixed-length hashed names with `/tmp` fallback to avoid macOS Unix socket length failures
+- Remote SSH command paths now include server keepalive options and hard execution timeouts to prevent hung git/tmux calls
+- Keychain credential read failures are now surfaced to users with actionable alerts instead of silently falling back as "password not found"
+- Ghostty config save now avoids redundant directory creation by relying on `ensureConfigFileExists()`
+- Added unit tests for shared SSH helper behaviors (control path length, option filtering, shell escaping, askpass environment hardening)
 
 ## [0.1.0] - 2026-03-20
 

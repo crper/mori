@@ -25,6 +25,8 @@ public struct Worktree: Identifiable, Codable, Equatable, Sendable {
     public var workflowStatus: WorkflowStatus
     /// Where this worktree's git/tmux operations execute.
     /// nil is treated as `.local` for backward compatibility.
+    /// Invariant: default behavior inherits the project endpoint; writes are
+    /// coordinated by `WorkspaceManager` to avoid drift between project/worktree.
     public var location: WorkspaceLocation?
 
     public init(

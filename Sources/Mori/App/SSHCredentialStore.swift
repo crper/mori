@@ -4,12 +4,19 @@ import Security
 
 enum SSHCredentialStoreError: LocalizedError {
     case encodingFailed
+    case decodingFailed
+    case accessDenied(OSStatus)
     case unexpectedStatus(OSStatus)
 
     var errorDescription: String? {
         switch self {
         case .encodingFailed:
             return "Unable to encode password for secure storage."
+        case .decodingFailed:
+            return "Stored SSH password has invalid encoding."
+        case .accessDenied(let status):
+            let message = SecCopyErrorMessageString(status, nil) as String? ?? "OSStatus \(status)"
+            return "Keychain access denied: \(message)"
         case .unexpectedStatus(let status):
             let message = SecCopyErrorMessageString(status, nil) as String? ?? "OSStatus \(status)"
             return message
@@ -55,7 +62,7 @@ enum SSHCredentialStore {
         }
     }
 
-    static func password(for ssh: SSHWorkspaceLocation) -> String? {
+    static func password(for ssh: SSHWorkspaceLocation) throws -> String? {
         let query: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
@@ -66,11 +73,19 @@ enum SSHCredentialStore {
 
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess,
-              let data = item as? Data,
+        if status == errSecItemNotFound {
+            return nil
+        }
+        if status == errSecInteractionNotAllowed || status == errSecAuthFailed || status == errSecUserCanceled {
+            throw SSHCredentialStoreError.accessDenied(status)
+        }
+        guard status == errSecSuccess else {
+            throw SSHCredentialStoreError.unexpectedStatus(status)
+        }
+        guard let data = item as? Data,
               let password = String(data: data, encoding: .utf8)
         else {
-            return nil
+            throw SSHCredentialStoreError.decodingFailed
         }
         return password
     }

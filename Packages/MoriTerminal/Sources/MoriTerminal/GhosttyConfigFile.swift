@@ -126,8 +126,6 @@ public final class GhosttyConfigFile {
     /// Save to disk, preserving structure.
     public func save() {
         Self.ensureConfigFileExists()
-        let dir = (Self.configPath as NSString).deletingLastPathComponent
-        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
 
         let content = lines.map { line in
             switch line {

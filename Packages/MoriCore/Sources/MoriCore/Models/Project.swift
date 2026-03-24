@@ -16,6 +16,9 @@ public struct Project: Identifiable, Codable, Equatable, Sendable {
     public var aggregateAlertState: AlertState
     /// Where this project's git/tmux operations execute.
     /// nil is treated as `.local` for backward compatibility.
+    /// Invariant: `WorkspaceManager` is the single synchronization point that keeps
+    /// project/worktree endpoint locations aligned unless a worktree is intentionally
+    /// assigned a different endpoint in a dedicated migration.
     public var location: WorkspaceLocation?
 
     public init(

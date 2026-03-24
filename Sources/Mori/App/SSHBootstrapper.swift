@@ -1,18 +1,29 @@
 import Foundation
 import MoriCore
 
+private final class SSHBootstrapResumeGuard: @unchecked Sendable {
+    private let lock = NSLock()
+    private var resumed = false
+    private let continuation: CheckedContinuation<(stdout: String, stderr: String, code: Int32), any Error>
+
+    init(continuation: CheckedContinuation<(stdout: String, stderr: String, code: Int32), any Error>) {
+        self.continuation = continuation
+    }
+
+    func resume(with result: sending Result<(stdout: String, stderr: String, code: Int32), any Error>) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !resumed else { return }
+        resumed = true
+        continuation.resume(with: result)
+    }
+}
+
 enum SSHControlOptions {
     static let controlPersist = "8h"
 
     static func controlPath(for ssh: SSHWorkspaceLocation) -> String {
-        let allowed = CharacterSet.alphanumerics
-        let sanitized = String(
-            ssh.endpointKey.unicodeScalars.map { scalar in
-                allowed.contains(scalar) ? Character(scalar) : "_"
-            }
-        )
-        let suffix = String(sanitized.prefix(32))
-        return (NSTemporaryDirectory() as NSString).appendingPathComponent("mori_ssh_\(suffix).sock")
+        SSHCommandSupport.controlSocketPath(endpointKey: ssh.endpointKey)
     }
 
     static func sshOptions(for ssh: SSHWorkspaceLocation) -> [String] {
@@ -48,14 +59,11 @@ enum SSHBootstrapper {
             throw SSHBootstrapError.passwordRequired
         }
 
-        let scriptPath = (NSTemporaryDirectory() as NSString).appendingPathComponent("mori-askpass-\(UUID().uuidString).sh")
-        let script = "#!/bin/sh\necho \"$MORI_SSH_PASSWORD\"\n"
-        try script.write(toFile: scriptPath, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptPath)
-        defer { try? FileManager.default.removeItem(atPath: scriptPath) }
+        let askPassScript = try SSHCommandSupport.createAskPassScript(password: password)
+        defer { askPassScript.cleanup() }
 
-        var args: [String] = [
-            "-o", "ConnectTimeout=8",
+        var args: [String] = SSHCommandSupport.connectivityOptions()
+        args += [
             "-o", "ControlMaster=auto",
             "-o", "ControlPersist=\(SSHControlOptions.controlPersist)",
             "-o", "ControlPath=\(SSHControlOptions.controlPath(for: ssh))",
@@ -68,16 +76,13 @@ enum SSHBootstrapper {
         }
         args += [ssh.target, "exit"]
 
-        var environment = ProcessInfo.processInfo.environment
-        environment["SSH_ASKPASS"] = scriptPath
-        environment["SSH_ASKPASS_REQUIRE"] = "force"
-        environment["DISPLAY"] = "mori"
-        environment["MORI_SSH_PASSWORD"] = password
+        let environment = SSHCommandSupport.askPassEnvironment(scriptPath: askPassScript.path)
 
         let (stdout, stderr, code) = try await runProcess(
             executablePath: "/usr/bin/ssh",
             arguments: args,
-            environment: environment
+            environment: environment,
+            timeoutSeconds: SSHCommandSupport.bootstrapTimeoutSeconds
         )
 
         if code != 0 {
@@ -89,7 +94,8 @@ enum SSHBootstrapper {
     private static func runProcess(
         executablePath: String,
         arguments: [String],
-        environment: [String: String]
+        environment: [String: String],
+        timeoutSeconds: Int? = nil
     ) async throws -> (stdout: String, stderr: String, code: Int32) {
         try await withCheckedThrowingContinuation { continuation in
             let process = Process()
@@ -103,10 +109,12 @@ enum SSHBootstrapper {
             process.standardError = stderrPipe
             process.standardInput = FileHandle.nullDevice
 
+            let guard_ = SSHBootstrapResumeGuard(continuation: continuation)
+
             do {
                 try process.run()
             } catch {
-                continuation.resume(throwing: error)
+                guard_.resume(with: .failure(error))
                 return
             }
 
@@ -115,7 +123,18 @@ enum SSHBootstrapper {
                 let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
                 let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
                 let stderr = String(data: stderrData, encoding: .utf8) ?? ""
-                continuation.resume(returning: (stdout, stderr, process.terminationStatus))
+                guard_.resume(with: .success((stdout, stderr, process.terminationStatus)))
+            }
+
+            if let timeoutSeconds {
+                DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(timeoutSeconds)) {
+                    if process.isRunning {
+                        process.terminate()
+                        guard_.resume(with: .failure(SSHBootstrapError.processFailed(
+                            "SSH authentication timed out after \(timeoutSeconds)s."
+                        )))
+                    }
+                }
             }
         }
     }

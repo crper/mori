@@ -1,35 +1,8 @@
 import Foundation
+import MoriCore
 
 /// SSH configuration for running tmux commands on a remote host.
-public struct TmuxSSHConfig: Sendable {
-    public let host: String
-    public let user: String?
-    public let port: Int?
-    public let sshOptions: [String]
-    /// Optional password used for password-auth control-master bootstrap.
-    public let askpassPassword: String?
-
-    public init(
-        host: String,
-        user: String? = nil,
-        port: Int? = nil,
-        sshOptions: [String] = [],
-        askpassPassword: String? = nil
-    ) {
-        self.host = host
-        self.user = user
-        self.port = port
-        self.sshOptions = sshOptions
-        self.askpassPassword = askpassPassword
-    }
-
-    var target: String {
-        if let user, !user.isEmpty {
-            return "\(user)@\(host)"
-        }
-        return host
-    }
-}
+public typealias TmuxSSHConfig = SSHExecutionConfig
 
 /// Errors that can occur when running tmux commands.
 public enum TmuxError: Error, LocalizedError, Sendable {
@@ -80,6 +53,10 @@ public actor TmuxCommandRunner {
     /// User's shell environment, loaded once on first use.
     private var shellEnvironment: [String: String]?
     private let sshConfig: TmuxSSHConfig?
+
+    private enum ProcessExecutionError: Error, Sendable {
+        case timedOut(Int)
+    }
 
     public init(sshConfig: TmuxSSHConfig? = nil) {
         self.sshConfig = sshConfig
@@ -214,31 +191,52 @@ public actor TmuxCommandRunner {
     /// Run a tmux command with the given arguments array. Returns stdout as a string.
     public func run(_ arguments: [String]) async throws -> String {
         if let sshConfig {
-            let tmuxCommand = (["tmux"] + arguments).map(Self.shellEscape).joined(separator: " ")
+            let tmuxCommand = (["tmux"] + arguments).map(SSHCommandSupport.shellEscape).joined(separator: " ")
             let remoteCommand = "export PATH=\"/opt/homebrew/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/snap/bin:\\$PATH\"; \(tmuxCommand)"
 
-            var sshArguments: [String] = ["-o", "ConnectTimeout=8"]
+            var sshArguments: [String] = SSHCommandSupport.connectivityOptions()
             sshArguments += sshConfig.sshOptions
             if let port = sshConfig.port {
                 sshArguments += ["-p", "\(port)"]
             }
             sshArguments += [sshConfig.target, remoteCommand]
 
-            var (stdout, stderr, exitCode) = try await runProcess(
-                executablePath: "/usr/bin/ssh",
-                arguments: sshArguments,
-                environment: nil
-            )
+            var stdout: String
+            var stderr: String
+            var exitCode: Int32
+            do {
+                (stdout, stderr, exitCode) = try await runProcess(
+                    executablePath: "/usr/bin/ssh",
+                    arguments: sshArguments,
+                    environment: nil,
+                    timeoutSeconds: SSHCommandSupport.remoteCommandTimeoutSeconds
+                )
+            } catch ProcessExecutionError.timedOut(let seconds) {
+                throw TmuxError.executionFailed(
+                    command: "tmux \(arguments.joined(separator: " "))",
+                    exitCode: 124,
+                    stderr: "SSH command timed out after \(seconds)s."
+                )
+            }
 
             if exitCode == 255,
                let password = sshConfig.askpassPassword,
                !password.isEmpty {
                 try await bootstrapPasswordControlMaster(sshConfig: sshConfig, password: password)
-                (stdout, stderr, exitCode) = try await runProcess(
-                    executablePath: "/usr/bin/ssh",
-                    arguments: sshArguments,
-                    environment: nil
-                )
+                do {
+                    (stdout, stderr, exitCode) = try await runProcess(
+                        executablePath: "/usr/bin/ssh",
+                        arguments: sshArguments,
+                        environment: nil,
+                        timeoutSeconds: SSHCommandSupport.remoteCommandTimeoutSeconds
+                    )
+                } catch ProcessExecutionError.timedOut(let seconds) {
+                    throw TmuxError.executionFailed(
+                        command: "tmux \(arguments.joined(separator: " "))",
+                        exitCode: 124,
+                        stderr: "SSH command timed out after \(seconds)s."
+                    )
+                }
             }
 
             if exitCode != 0 {
@@ -281,14 +279,11 @@ public actor TmuxCommandRunner {
         sshConfig: TmuxSSHConfig,
         password: String
     ) async throws {
-        let scriptPath = (NSTemporaryDirectory() as NSString).appendingPathComponent("mori-askpass-\(UUID().uuidString).sh")
-        let script = "#!/bin/sh\necho \"$MORI_SSH_PASSWORD\"\n"
-        try script.write(toFile: scriptPath, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptPath)
-        defer { try? FileManager.default.removeItem(atPath: scriptPath) }
+        let askPassScript = try SSHCommandSupport.createAskPassScript(password: password)
+        defer { askPassScript.cleanup() }
 
-        var arguments: [String] = ["-o", "ConnectTimeout=8"]
-        arguments += Self.removingBatchMode(from: sshConfig.sshOptions)
+        var arguments: [String] = SSHCommandSupport.connectivityOptions()
+        arguments += SSHCommandSupport.removingBatchMode(from: sshConfig.sshOptions)
         arguments += [
             "-o", "PreferredAuthentications=password,keyboard-interactive",
             "-o", "PubkeyAuthentication=no",
@@ -299,18 +294,26 @@ public actor TmuxCommandRunner {
         }
         arguments += [sshConfig.target, "exit"]
 
-        var environment = ProcessInfo.processInfo.environment
-        environment["SSH_ASKPASS"] = scriptPath
-        environment["SSH_ASKPASS_REQUIRE"] = "force"
-        environment["DISPLAY"] = "mori"
-        environment["MORI_SSH_PASSWORD"] = password
+        let environment = SSHCommandSupport.askPassEnvironment(scriptPath: askPassScript.path)
 
-        let (stdout, stderr, exitCode) = try await runProcess(
-            executablePath: "/usr/bin/ssh",
-            arguments: arguments,
-            environment: environment,
-            stdinNull: true
-        )
+        let stdout: String
+        let stderr: String
+        let exitCode: Int32
+        do {
+            (stdout, stderr, exitCode) = try await runProcess(
+                executablePath: "/usr/bin/ssh",
+                arguments: arguments,
+                environment: environment,
+                stdinNull: true,
+                timeoutSeconds: SSHCommandSupport.bootstrapTimeoutSeconds
+            )
+        } catch ProcessExecutionError.timedOut(let seconds) {
+            throw TmuxError.executionFailed(
+                command: "ssh \(sshConfig.target) exit",
+                exitCode: 124,
+                stderr: "SSH authentication timed out after \(seconds)s."
+            )
+        }
 
         guard exitCode == 0 else {
             let message = stderr.isEmpty ? stdout : stderr
@@ -320,20 +323,6 @@ public actor TmuxCommandRunner {
                 stderr: message.isEmpty ? "SSH authentication failed." : message
             )
         }
-    }
-
-    private static func removingBatchMode(from options: [String]) -> [String] {
-        var filtered: [String] = []
-        var i = 0
-        while i < options.count {
-            if options[i] == "-o", i + 1 < options.count, options[i + 1].hasPrefix("BatchMode=") {
-                i += 2
-                continue
-            }
-            filtered.append(options[i])
-            i += 1
-        }
-        return filtered
     }
 
     private func runProcess(
@@ -385,17 +374,10 @@ public actor TmuxCommandRunner {
                 DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(timeoutSeconds)) {
                     if process.isRunning {
                         process.terminate()
+                        guard_.resume(with: .failure(ProcessExecutionError.timedOut(timeoutSeconds)))
                     }
                 }
             }
         }
-    }
-
-    private static func shellEscape(_ value: String) -> String {
-        if value.isEmpty {
-            return "''"
-        }
-        let escaped = value.replacingOccurrences(of: "'", with: "'\"'\"'")
-        return "'\(escaped)'"
     }
 }
