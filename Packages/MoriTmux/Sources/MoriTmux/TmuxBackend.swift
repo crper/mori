@@ -118,11 +118,9 @@ public actor TmuxBackend: TmuxControlling {
     /// Return the number of windows in a specific session.
     public func windowCount(sessionName: String) async throws -> Int {
         let output = try await runner.run(
-            "list-windows", "-t", sessionName, "-F", "#{window_id}"
+            "display-message", "-p", "-t", sessionName, "#{session_windows}"
         )
-        return output
-            .split(separator: "\n", omittingEmptySubsequences: true)
-            .count
+        return Int(output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
     }
 
     public func createSession(name: String, cwd: String) async throws -> TmuxSession {

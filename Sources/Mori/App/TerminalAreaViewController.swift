@@ -5,7 +5,7 @@ import MoriTerminal
 /// View controller that hosts terminal surfaces, one per tmux session.
 /// Uses a TerminalSurfaceCache to manage an LRU pool of surfaces (max 3).
 /// When a worktree is selected, it shows the corresponding terminal surface
-/// running `tmux attach-session -t <session-name>`.
+/// running `tmux new-session -A -s <session-name>` to attach-or-create.
 @MainActor
 final class TerminalAreaViewController: NSViewController {
 
@@ -99,19 +99,20 @@ final class TerminalAreaViewController: NSViewController {
         removeResidualTerminalSubviews()
 
         // Get or create surface from cache.
-        // Use `has-session` to check first, avoiding tmux parsing the session
-        // name as session:window when it contains special characters.
+        // Use `new-session -A` to atomically attach-or-create without shell
+        // fallback chains (`has-session && attach || new-session`).
         let escaped = shellEscape(sessionName)
         let command: String
         let effectiveWorkingDirectory: String
         switch location {
         case .local:
-            command = "tmux has-session -t \(escaped) 2>/dev/null && tmux attach-session -t \(escaped) || tmux new-session -s \(escaped)"
+            let escapedCwd = shellEscape(workingDirectory)
+            command = "export STARSHIP_LOG=error; export PATH=\"/opt/homebrew/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH\"; tmux new-session -A -s \(escaped) -c \(escapedCwd)"
             effectiveWorkingDirectory = workingDirectory
         case .ssh(let ssh):
             let termProgram = ProcessInfo.processInfo.environment["TERM_PROGRAM"] ?? "ghostty"
-            let remoteTmuxCore = "tmux has-session -t \(escaped) 2>/dev/null && tmux attach-session -t \(escaped) || tmux new-session -s \(escaped)"
-            let remoteTmux = "export TERM_PROGRAM=\(shellEscape(termProgram)); export COLORTERM=truecolor; export PATH=\"/opt/homebrew/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/snap/bin:$PATH\"; \(remoteTmuxCore)"
+            let remoteCwd = shellEscape(workingDirectory)
+            let remoteTmux = "export STARSHIP_LOG=error; export TERM_PROGRAM=\(shellEscape(termProgram)); export COLORTERM=truecolor; export PATH=\"/opt/homebrew/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/snap/bin:$PATH\"; tmux new-session -A -s \(escaped) -c \(remoteCwd)"
             var sshCommand = "ssh -tt"
             for option in sshOptionsForInteractiveTerminal(ssh) {
                 sshCommand += " \(shellEscape(option))"
