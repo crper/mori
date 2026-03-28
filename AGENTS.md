@@ -18,6 +18,26 @@ mise run clean           # Remove .build and .derived-data
 
 Tests are executable targets (not XCTest), run via `swift run <TestTarget>` from each package directory.
 
+## Pre-Push Verification
+
+Before pushing changes, replicate the CI pipeline locally to catch failures early:
+
+```bash
+# 1. Run tests (same as CI)
+mise run test
+
+# 2. Build both products in release mode (catches strict concurrency errors)
+swift build -c release --product Mori
+swift build --build-path .build-cli -c release --product mori
+
+# 3. Bundle and verify the app launches (catches rpath, signing, resource issues)
+CI=1 bash scripts/bundle.sh
+./Mori.app/Contents/MacOS/Mori &  # should not crash; kill after verifying
+```
+
+Debug builds may miss errors that only appear in release mode (e.g., Swift 6 sendability).
+Always build release before tagging.
+
 ## Key Conventions
 
 - **Swift 6 strict concurrency**: UI code is `@MainActor`, tmux/git use actors
