@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private var ipcServer: IPCServer?
     private var ipcHandler: IPCHandler?
     private var worktreeCreationController: WorktreeCreationController?
+    private let sidebarPaneOutputCache = PaneOutputCache()
     private var settingsWindowController: NSWindowController?
     private var configFile: GhosttyConfigFile?
     private var proxyApplyTask: Task<Void, Never>?
@@ -161,6 +162,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             },
             onSetWorkflowStatus: { [weak manager] worktreeId, status in
                 manager?.setWorkflowStatus(worktreeId: worktreeId, status: status)
+            },
+            onRequestPaneOutput: { [weak self, weak manager] paneId, completion in
+                guard let self, let manager else {
+                    completion(nil)
+                    return
+                }
+                // Check cache first
+                if let cached = self.sidebarPaneOutputCache.get(paneId) {
+                    completion(cached)
+                    return
+                }
+                // Find the RuntimeWindow and its worktree to capture output
+                let state = manager.appState
+                guard let runtimeWindow = state.runtimeWindows.first(where: {
+                    $0.activePaneId == paneId || $0.tmuxWindowId == paneId
+                }),
+                let worktree = state.worktrees.first(where: { $0.id == runtimeWindow.worktreeId }) else {
+                    completion(nil)
+                    return
+                }
+                let tmux = manager.tmuxBackendForWorktree(worktree)
+                let targetPaneId = runtimeWindow.activePaneId ?? manager.rawTmuxWindowId(from: runtimeWindow)
+                Task {
+                    let output = try? await tmux.capturePaneOutput(paneId: targetPaneId, lineCount: 8)
+                    if let output {
+                        self.sidebarPaneOutputCache.set(paneId, output: output)
+                    }
+                    completion(output)
+                }
+            },
+            onSendKeys: { [weak manager] paneId, text in
+                guard let manager else { return }
+                let state = manager.appState
+                guard let runtimeWindow = state.runtimeWindows.first(where: {
+                    $0.activePaneId == paneId || $0.tmuxWindowId == paneId
+                }),
+                let worktree = state.worktrees.first(where: { $0.id == runtimeWindow.worktreeId }),
+                let sessionName = worktree.tmuxSessionName else { return }
+                let tmux = manager.tmuxBackendForWorktree(worktree)
+                let targetPaneId = runtimeWindow.activePaneId ?? manager.rawTmuxWindowId(from: runtimeWindow)
+                Task {
+                    try? await tmux.sendKeys(sessionId: sessionName, paneId: targetPaneId, keys: text)
+                }
             }
         )
 
