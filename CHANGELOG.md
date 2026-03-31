@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-03-31
+
+### ✨ Features
+
+- **MoriRemote**: iOS app with SSH terminal for remote access ([#30](https://github.com/vaayne/mori/pull/30))
+
+### 🐛 Bug Fixes
+
+- Fix main-thread assertion crash in `NotificationManager` by switching `UNUserNotificationCenter` APIs from completion handlers to async/await
+
+### 📦 Dependencies
+
+- Bump `actions/checkout` from v5 to v6
+- Bump `upload-artifact` and `download-artifact` from v5 to v7 for Node.js 24 support
+
+**Full Changelog**: [v0.2.0...v0.2.1](https://github.com/vaayne/mori/compare/v0.2.0...v0.2.1)
+
 ## [0.2.0] - 2026-03-31
 
 ### ✨ Features
