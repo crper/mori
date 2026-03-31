@@ -1367,7 +1367,7 @@ final class WorkspaceManager {
         updateAggregatedBadges()
 
         // Check for notification-worthy badge transitions
-        checkNotifications()
+        await checkNotifications()
 
         // Update dock badge with aggregate unread count
         updateDockBadge()
@@ -1667,7 +1667,7 @@ final class WorkspaceManager {
 
     /// Compare current window badges with previous poll cycle and fire notifications
     /// for approved transitions via NotificationDebouncer.
-    private func checkNotifications() {
+    private func checkNotifications() async {
         let now = Date()
         for rw in appState.runtimeWindows {
             let oldBadge = previousBadges[rw.tmuxWindowId]
@@ -1686,7 +1686,7 @@ final class WorkspaceManager {
                 let agentDisplayName = rw.detectedAgent
                     .flatMap { AgentHookConfigurator.agentDisplayNames[$0] }
 
-                notificationManager.notify(
+                await notificationManager.notify(
                     event,
                     windowTitle: rw.title,
                     worktreeName: worktreeName,

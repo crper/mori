@@ -24,12 +24,12 @@ final class NotificationManager: NSObject {
     }
 
     /// Request notification permission on first use.
-    func requestPermissionIfNeeded() {
+    func requestPermissionIfNeeded() async {
         guard hasBundle, !permissionRequested else { return }
         permissionRequested = true
 
         let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+        _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
     }
 
     /// Post a notification for a badge transition event.
@@ -46,8 +46,8 @@ final class NotificationManager: NSObject {
         windowId: String,
         worktreeId: String,
         agentName: String? = nil
-    ) {
-        requestPermissionIfNeeded()
+    ) async {
+        await requestPermissionIfNeeded()
 
         let content = UNMutableNotificationContent()
         content.categoryIdentifier = Self.categoryIdentifier
@@ -78,7 +78,7 @@ final class NotificationManager: NSObject {
         )
 
         if hasBundle {
-            UNUserNotificationCenter.current().add(request) { _ in }
+            try? await UNUserNotificationCenter.current().add(request)
         } else {
             postViaOsascript(title: content.title, body: content.body)
         }
