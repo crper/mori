@@ -1,0 +1,51 @@
+# Tasks: Mori Remote iOS — Phase 0 Spike
+
+## Phase 1: Cross-Platform Package Foundation
+
+- [x] 1.1 — Update `MoriCore/Package.swift` to add `.iOS(.v17)` platform (`Packages/MoriCore/Package.swift`)
+- [x] 1.2 — Audit `MoriCore` sources for macOS-only APIs (`Packages/MoriCore/Sources/MoriCore/**/*.swift`)
+- [x] 1.3 — Update `MoriTmux/Package.swift` to add `.iOS(.v17)` platform (`Packages/MoriTmux/Package.swift`)
+- [x] 1.4 — Gate `TmuxCommandRunner.swift` behind `#if os(macOS)` (`Packages/MoriTmux/Sources/MoriTmux/TmuxCommandRunner.swift`)
+- [x] 1.5 — Gate `TmuxBackend.swift` behind `#if os(macOS)` (`Packages/MoriTmux/Sources/MoriTmux/TmuxBackend.swift`)
+- [x] 1.6 — Audit `PaneStateDetector.swift` and `AgentDetector.swift` — no gating needed (cross-platform)
+- [x] 1.7 — Audit test targets and TmuxControlling — no gating needed (all cross-platform)
+- [x] 1.8 — Verify macOS build + tests pass (`test:core` 361/361, `test:tmux` 200/200)
+
+## Phase 2: MoriSSH Package — SSH Transport
+
+- [x] 2.1 — Create `Packages/MoriSSH/Package.swift` with `swift-nio-ssh` 0.8.0+, `swift-nio` 2.65.0+ (`Packages/MoriSSH/Package.swift`)
+- [x] 2.2 — Create `SSHAuthConfig.swift` — password + public key (Data, not path) auth types (`Packages/MoriSSH/Sources/MoriSSH/SSHAuthConfig.swift`)
+- [x] 2.3 — Create `SSHConnectionManager.swift` — actor, TCP → SSH → auth → channels, accept-all host keys (`Packages/MoriSSH/Sources/MoriSSH/SSHConnectionManager.swift`)
+- [x] 2.4 — Create `SSHChannel.swift` — async read/write wrapper over NIO channel (`Packages/MoriSSH/Sources/MoriSSH/SSHChannel.swift`)
+- [x] 2.5 — Create `SSHError.swift` — error types (`Packages/MoriSSH/Sources/MoriSSH/SSHError.swift`)
+- [x] 2.6 — Create `MoriSSHTests` executable test target (18/18 assertions pass)
+
+## Phase 3: Tmux Control-Mode Client
+
+- [x] 3.1 — Create `TmuxControlLine.swift` — parsed line type enum with `.plainLine` (`Packages/MoriTmux/Sources/MoriTmux/TmuxControlLine.swift`)
+- [x] 3.2 — Create `TmuxNotification.swift` — notification enum with `.unknown` (`Packages/MoriTmux/Sources/MoriTmux/TmuxNotification.swift`)
+- [x] 3.3 — Create `TmuxControlParser.swift` — stateless line parser with octal unescape, high-bit bytes verbatim (`Packages/MoriTmux/Sources/MoriTmux/TmuxControlParser.swift`)
+- [x] 3.4 — Create `TmuxTransport.swift` — byte channel protocol (`Packages/MoriTmux/Sources/MoriTmux/TmuxTransport.swift`)
+- [x] 3.5 — Create `TmuxControlClient.swift` — actor with line buffer, block tracking, serialized command correlation by server command number, EOF cancellation (`Packages/MoriTmux/Sources/MoriTmux/TmuxControlClient.swift`)
+- [x] 3.6 — Add parser + client tests: 42 new assertions (242 total) in `Packages/MoriTmux/Tests/MoriTmuxTests/main.swift`
+
+## Phase 4: GhosttyKit iOS Build + Terminal Bridge
+
+- [x] 4.1 — Update `scripts/build-ghostty.sh` with `--universal` flag (`scripts/build-ghostty.sh`)
+- [x] 4.2 — Cherry-pick Manual backend, build, and validate universal xcframework (`vendor/ghostty`, `Frameworks/GhosttyKit.xcframework`)
+- [x] 4.3 — Update `MoriTerminal/Package.swift` to add `.iOS(.v17)`, conditional `Carbon` linker setting (`Packages/MoriTerminal/Package.swift`)
+- [x] 4.4 — Gate all macOS-specific files behind `#if os(macOS)` (`Packages/MoriTerminal/Sources/MoriTerminal/*.swift`)
+- [x] 4.5 — Create `GhosttyiOSApp.swift` — iOS ghostty app singleton (`Packages/MoriTerminal/Sources/MoriTerminal/GhosttyiOSApp.swift`)
+- [x] 4.6 — Create `GhosttyiOSRenderer.swift` — UIView + Manual backend + CADisplayLink (`Packages/MoriTerminal/Sources/MoriTerminal/GhosttyiOSRenderer.swift`)
+
+## Phase 5: iOS App Target + End-to-End Wiring
+
+- [x] 5.1 — Create `MoriRemote/` Xcode project with SPM package deps (`MoriRemote/`)
+- [x] 5.2 — Create `ConnectView.swift` — SSH connection form, password auth primary (`MoriRemote/MoriRemote/ConnectView.swift`)
+- [x] 5.3 — Create `TerminalView.swift` — UIViewRepresentable for GhosttyPipeRenderer (`MoriRemote/MoriRemote/TerminalView.swift`)
+- [x] 5.4 — Create `SpikeCoordinator.swift` — orchestrator: `tmux -C` (single-C), `refresh-client -C` on attach+resize, disconnect handling (`MoriRemote/MoriRemote/SpikeCoordinator.swift`)
+- [x] 5.5 — Create `SSHChannelTransport.swift` — TmuxTransport adapter for SSHChannel (`MoriRemote/MoriRemote/SSHChannelTransport.swift`)
+- [x] 5.6 — Create `KeyboardInputView.swift` — text input + special key buttons (`MoriRemote/MoriRemote/KeyboardInputView.swift`)
+- [x] 5.7 — Wire up `MoriRemoteApp.swift` — app entry point with navigation (`MoriRemote/MoriRemote/MoriRemoteApp.swift`)
+- [x] 5.8 — Verify macOS app regression (`mise run test:core`, `mise run test:tmux`)
+- [ ] 5.9 — Build and run iOS app, manual end-to-end test including `refresh-client -C` resize (arm64 simulator build passes; remote manual validation still pending)

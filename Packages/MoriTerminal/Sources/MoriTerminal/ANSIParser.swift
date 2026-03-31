@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 
 /// Parsed segment from ANSI escape sequence processing.
@@ -293,3 +294,4 @@ private extension Character {
         return (v >= 0x30 && v <= 0x3F) // 0-9, :, ;, <, =, >, ?
     }
 }
+#endif

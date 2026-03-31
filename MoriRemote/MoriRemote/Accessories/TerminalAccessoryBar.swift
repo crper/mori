@@ -1,0 +1,123 @@
+#if os(iOS)
+import SwiftTerm
+import UIKit
+
+/// Single-row input accessory view for the terminal keyboard.
+///
+/// Contains the `KeyBarView` — customizable quick keys including the tmux menu button.
+@MainActor
+final class TerminalAccessoryBar: UIInputView, UIInputViewAudioFeedback {
+
+    let keyBar = KeyBarView()
+
+    weak var terminalView: SwiftTerm.TerminalView? {
+        didSet { keyBar.terminalView = terminalView }
+    }
+
+    /// Callback for tmux commands from the tmux popup menu in the key bar.
+    var onTmuxCommand: ((TmuxCommand) -> Void)?
+
+    /// Called when the user taps the gear button to customize the key bar.
+    var onCustomizeTapped: (() -> Void)?
+
+    // UIInputViewAudioFeedback
+    var enableInputClicksWhenVisible: Bool { true }
+
+    private let barBg = UIColor(red: 0.102, green: 0.102, blue: 0.125, alpha: 1) // #1a1a20
+
+    // MARK: - Init
+
+    init() {
+        super.init(frame: CGRect(x: 0, y: 0, width: 0, height: 45), inputViewStyle: .keyboard)
+        allowsSelfSizing = true
+        backgroundColor = barBg
+        setup()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func setup() {
+        let topBorder = UIView()
+        topBorder.backgroundColor = UIColor.white.withAlphaComponent(0.06)
+        topBorder.translatesAutoresizingMaskIntoConstraints = false
+
+        keyBar.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(topBorder)
+        addSubview(keyBar)
+
+        keyBar.onCustomizeTapped = { [weak self] in
+            self?.onCustomizeTapped?()
+        }
+        keyBar.onTmuxAction = { [weak self] cmd in
+            self?.onTmuxCommand?(cmd)
+        }
+
+        NSLayoutConstraint.activate([
+            topBorder.topAnchor.constraint(equalTo: topAnchor),
+            topBorder.leadingAnchor.constraint(equalTo: leadingAnchor),
+            topBorder.trailingAnchor.constraint(equalTo: trailingAnchor),
+            topBorder.heightAnchor.constraint(equalToConstant: 1),
+
+            keyBar.topAnchor.constraint(equalTo: topBorder.bottomAnchor),
+            keyBar.leadingAnchor.constraint(equalTo: leadingAnchor),
+            keyBar.trailingAnchor.constraint(equalTo: trailingAnchor),
+            keyBar.heightAnchor.constraint(equalToConstant: 44),
+            keyBar.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+    }
+
+    // MARK: - Tmux State
+
+    func updateTmux(session: TmuxSession?, windows: [TmuxWindow]) {
+        // Kept for ShellCoordinator compatibility — no-op now that the pill is removed.
+    }
+
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.noIntrinsicMetric, height: 45)
+    }
+}
+
+// MARK: - Tmux Command
+
+enum TmuxCommand: Sendable {
+    // Window/tab management
+    case selectWindow(Int)
+    case newWindow
+    case nextWindow
+    case prevWindow
+
+    // Pane management
+    case splitRight
+    case splitDown
+    case nextPane
+    case prevPane
+    case toggleZoom
+    case closePane
+
+    // Session
+    case showSessionPicker
+    case switchSession(String)
+    case detach
+
+    /// The real tmux CLI command to execute via SSH exec channel.
+    func shellCommand(session: String? = nil) -> String {
+        switch self {
+        case .selectWindow(let idx): return "tmux select-window -t :\(idx)"
+        case .newWindow:             return "tmux new-window"
+        case .nextWindow:            return "tmux next-window"
+        case .prevWindow:            return "tmux previous-window"
+        case .splitRight:            return "tmux split-window -h"
+        case .splitDown:             return "tmux split-window -v"
+        case .nextPane:              return "tmux select-pane -t :.+"
+        case .prevPane:              return "tmux select-pane -t :.-"
+        case .toggleZoom:            return "tmux resize-pane -Z"
+        case .closePane:             return "tmux kill-pane"
+        case .showSessionPicker:     return "tmux switch-client -n"
+        case .switchSession(let n):  return "tmux switch-client -t '\(n)'"
+        case .detach:                return "tmux detach-client"
+        }
+    }
+}
+#endif

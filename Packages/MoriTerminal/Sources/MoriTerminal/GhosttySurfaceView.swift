@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Carbon
 import GhosttyKit
@@ -556,3 +557,4 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
         }
     }
 }
+#endif

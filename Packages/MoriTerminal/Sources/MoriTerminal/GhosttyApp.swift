@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import GhosttyKit
 
@@ -367,3 +368,4 @@ final class GhosttyApp {
         }
     }
 }
+#endif

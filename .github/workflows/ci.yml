@@ -1,6 +1,10 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -51,6 +55,67 @@ jobs:
 
       - name: Test MoriIPC
         run: cd Packages/MoriIPC && swift run MoriIPCTests
+
+  ios-build:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Cache SPM packages
+        uses: actions/cache@v5
+        with:
+          path: MoriRemote/.derived-data-sim/SourcePackages
+          key: spm-ios-${{ hashFiles('MoriRemote/MoriRemote.xcodeproj/project.pbxproj', '**/Package.resolved') }}
+          restore-keys: spm-ios-
+
+      - name: Install tools
+        run: |
+          brew install xcodegen xcbeautify
+
+      - name: Stub GhosttyKit for SPM resolution
+        run: |
+          mkdir -p Frameworks/GhosttyKit.xcframework/macos-arm64_x86_64/GhosttyKit.framework/Headers
+          touch Frameworks/GhosttyKit.xcframework/macos-arm64_x86_64/GhosttyKit.framework/GhosttyKit
+          cat > Frameworks/GhosttyKit.xcframework/Info.plist << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>AvailableLibraries</key>
+            <array>
+              <dict>
+                <key>LibraryIdentifier</key>
+                <string>macos-arm64_x86_64</string>
+                <key>LibraryPath</key>
+                <string>GhosttyKit.framework</string>
+                <key>SupportedArchitectures</key>
+                <array><string>arm64</string><string>x86_64</string></array>
+                <key>SupportedPlatform</key>
+                <string>macos</string>
+              </dict>
+            </array>
+            <key>CFBundlePackageType</key>
+            <string>XFWK</string>
+            <key>XCFrameworkFormatVersion</key>
+            <string>1.0</string>
+          </dict>
+          </plist>
+          PLIST
+
+      - name: Generate Xcode project
+        run: cd MoriRemote && xcodegen generate
+
+      - name: Build for iOS Simulator
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project MoriRemote/MoriRemote.xcodeproj \
+            -scheme MoriRemote \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath .derived-data-ios \
+            build 2>&1 | xcbeautify
 
   bundle:
     needs: [ghosttykit, build-and-test]

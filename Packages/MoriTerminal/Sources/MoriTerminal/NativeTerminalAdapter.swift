@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Darwin
 
@@ -512,3 +513,4 @@ private final class WeakSendableRef<T: AnyObject>: @unchecked Sendable {
     weak var value: T?
     init(_ value: T) { self.value = value }
 }
+#endif
