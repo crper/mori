@@ -7,8 +7,8 @@ import SwiftUI
 ///
 /// Shows a capsule-shaped button with an ``UpdateBadge`` icon and text label.
 /// Clicking opens a popover with ``UpdatePopoverView`` for detailed actions.
-/// Auto-dismisses the `.notFound` state after 5 seconds.
-/// Only visible when state is not `.idle`.
+/// Auto-dismisses the `.notFound` state after 3 seconds.
+/// Always rendered with opacity-based hiding for stable toolbar item sizing.
 struct UpdatePill: View {
     /// The update view model that provides the current state and information
     @ObservedObject var model: UpdateViewModel
@@ -26,29 +26,29 @@ struct UpdatePill: View {
     private let textFont = NSFont.systemFont(ofSize: 11, weight: .medium)
 
     var body: some View {
-        if !model.state.isIdle {
-            pillButton
-                .popover(isPresented: $showPopover, arrowEdge: .bottom) {
-                    UpdatePopoverView(model: model)
-                }
-                .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                .onChange(of: model.maxWidthText) { _, newText in
-                    let attributes: [NSAttributedString.Key: Any] = [.font: textFont]
-                    cachedTextWidth = (newText as NSString).size(withAttributes: attributes).width
-                }
-                .onChange(of: model.state) { _, newState in
-                    resetTask?.cancel()
-                    if case .notFound(let notFound) = newState {
-                        resetTask = Task { [weak model] in
-                            try? await Task.sleep(for: .seconds(5))
-                            guard !Task.isCancelled, let model, case .notFound = model.state else { return }
-                            notFound.dismiss(from: model)
-                        }
-                    } else {
-                        resetTask = nil
+        pillButton
+            .popover(isPresented: $showPopover, arrowEdge: .bottom) {
+                UpdatePopoverView(model: model)
+            }
+            .opacity(model.state.isIdle ? 0 : 1)
+            .allowsHitTesting(!model.state.isIdle)
+            .animation(.easeInOut(duration: 0.2), value: model.state.isIdle)
+            .onChange(of: model.maxWidthText) { _, newText in
+                let attributes: [NSAttributedString.Key: Any] = [.font: textFont]
+                cachedTextWidth = (newText as NSString).size(withAttributes: attributes).width
+            }
+            .onChange(of: model.state) { _, newState in
+                resetTask?.cancel()
+                if case .notFound(let notFound) = newState {
+                    resetTask = Task { [weak model] in
+                        try? await Task.sleep(for: .seconds(3))
+                        guard !Task.isCancelled, let model, case .notFound = model.state else { return }
+                        notFound.dismiss(from: model)
                     }
+                } else {
+                    resetTask = nil
                 }
-        }
+            }
     }
 
     /// The pill-shaped button view that displays the update badge and text

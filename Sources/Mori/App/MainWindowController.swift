@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import MoriTerminal
 
 final class MainWindowController: NSWindowController {
@@ -12,6 +13,9 @@ final class MainWindowController: NSWindowController {
 
     var onToggleSidebar: (() -> Void)?
     var onShowCreateWorktreePanel: (() -> Void)?
+
+    /// The hosting view for the update pill, overlaid on the titlebar.
+    private var updateOverlay: NSView?
 
     // MARK: - Init
 
@@ -63,10 +67,23 @@ final class MainWindowController: NSWindowController {
         onShowCreateWorktreePanel?()
     }
 
-    /// Adds the update pill as a trailing titlebar accessory.
+    /// Adds the update pill as an overlay pinned to the top-right of the titlebar area.
     func addUpdateAccessory(viewModel: UpdateViewModel) {
-        let accessory = UpdateAccessoryView(model: viewModel)
-        window?.addTitlebarAccessoryViewController(accessory)
+        guard let window else { return }
+
+        // Find the titlebar container (themeFrame) to overlay onto
+        guard let themeFrame = window.contentView?.superview else { return }
+
+        let hostingView = NSHostingView(rootView: UpdatePill(model: viewModel))
+        hostingView.translatesAutoresizingMaskIntoConstraints = false
+        themeFrame.addSubview(hostingView)
+
+        NSLayoutConstraint.activate([
+            hostingView.topAnchor.constraint(equalTo: themeFrame.topAnchor, constant: 5),
+            hostingView.trailingAnchor.constraint(equalTo: themeFrame.trailingAnchor, constant: -10),
+        ])
+
+        self.updateOverlay = hostingView
     }
 
     func updateTitle(projectName: String?, worktreeName: String? = nil) {

@@ -13,7 +13,9 @@ final class UpdateViewModel: ObservableObject, @unchecked Sendable {
     var text: String {
         switch state {
         case .idle:
-            return ""
+            // Placeholder text so the hosting view maintains nonzero intrinsic size.
+            // The pill hides this with opacity when idle.
+            return .localized("Checking for updates\u{2026}")
         case .permissionRequest:
             return .localized("Enable Automatic Updates?")
         case .checking:
@@ -57,7 +59,8 @@ final class UpdateViewModel: ObservableObject, @unchecked Sendable {
     var iconName: String? {
         switch state {
         case .idle:
-            return nil
+            // Placeholder icon so the hosting view maintains nonzero intrinsic size.
+            return "arrow.triangle.2.circlepath"
         case .permissionRequest:
             return "questionmark.circle"
         case .checking:
