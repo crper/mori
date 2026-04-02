@@ -1,0 +1,186 @@
+# Handoff
+
+<!-- Append a new phase section after each phase completes. -->
+
+## Phase 1: Core Model & Defaults
+
+**Status:** complete
+
+**Tasks completed:**
+- 1.1: Created `KeyBinding`, `Shortcut`, `KeyModifiers`, `KeyBindingCategory`, `ConflictResult` types in MoriCore
+- 1.2: Created `KeyBindingStorageProtocol` in the same file
+- 1.3: Created `KeyBindingDefaults` with all 50 default bindings (39 configurable + 11 locked system)
+- 1.4: Wrote 75 new test assertions in `KeyBindingTests.swift`, integrated into `main.swift`
+
+**Files changed:**
+- `Packages/MoriCore/Sources/MoriCore/Models/KeyBinding.swift` — all types + storage protocol
+- `Packages/MoriCore/Sources/MoriCore/Models/KeyBindingDefaults.swift` — full default binding table
+- `Packages/MoriCore/Tests/MoriCoreTests/KeyBindingTests.swift` — comprehensive tests
+- `Packages/MoriCore/Tests/MoriCoreTests/main.swift` — added `runKeyBindingTests()` call
+
+**Commits:**
+- `6297a93` — ✨ feat: add KeyBinding, Shortcut, KeyModifiers, KeyBindingCategory, ConflictResult types and KeyBindingStorageProtocol
+- `d496c6e` — ✨ feat: add KeyBindingDefaults with all 50 default key bindings (39 configurable + 11 locked system)
+- `3b9b549` — ✅ test: add KeyBinding model and defaults unit tests (75 new assertions)
+
+**Decisions & context for next phase:**
+- `KeyModifiers` has static presets (`.cmd`, `.cmdShift`, `.cmdOption`, `.cmdControl`, `.ctrl`, `.ctrlShift`) for ergonomic construction
+- Plan said ~35 bindings but the actual table specifies 39 configurable + 11 locked = 50 total
+- No AppKit imports — all types are cross-platform (macOS + iOS) compatible
+- `KeyBindingStorageProtocol` is minimal (load/save overrides as `[String: KeyBinding]`) — Phase 2 will implement the JSON file-backed version
+- `ConflictResult` is `Equatable` for easy testing in Phase 3
+- All 678 test assertions pass (603 existing + 75 new)
+
+### Fixes (post-review)
+- Fixed `window.toggleSidebar` default from `⌘0` to `⌘B` to match AppDelegate and docs (commit `3d59a05`)
+- Added `testKeyBindingDefaultsNoShortcutConflicts` to catch duplicate shortcuts in defaults (commit `3d59a05`)
+
+## Phase 2: Persistence (MoriPersistence)
+
+**Status:** complete
+
+**Tasks completed:**
+- 2.1: Created `KeyBindingRepository` implementing `KeyBindingStorageProtocol` in MoriPersistence
+- 2.2: Wrote 22 new test assertions in `KeyBindingRepositoryTests.swift`, integrated into `main.swift`
+
+**Files changed:**
+- `Packages/MoriPersistence/Sources/MoriPersistence/Repositories/KeyBindingRepository.swift` — sparse JSON file-backed storage
+- `Packages/MoriPersistence/Tests/MoriPersistenceTests/KeyBindingRepositoryTests.swift` — 5 test functions, 22 assertions
+- `Packages/MoriPersistence/Tests/MoriPersistenceTests/main.swift` — added `runKeyBindingRepositoryTests()` call
+
+**Commits:**
+- `d020a24` — ✨ feat: add KeyBindingRepository for sparse JSON persistence
+- `2636136` — ✅ test: add KeyBindingRepository persistence tests
+
+**Decisions & context for next phase:**
+- `KeyBindingRepository` is a standalone `final class` (not tied to `JSONStore`) — it manages its own `keybindings.json` file
+- Thread-safe via `NSLock`, matching `JSONStore` pattern
+- Sparse storage: only user-overridden bindings are saved; defaults are NOT persisted
+- Missing file → empty dict, corrupt file → empty dict (graceful fallback, no crashes)
+- File location is passed at init (caller decides path, e.g. `~/Library/Application Support/Mori/keybindings.json`)
+- Uses standard `Codable` encoding (no custom ISO8601 needed since `KeyBinding` has no `Date` fields)
+- All 64 MoriPersistence test assertions pass (42 existing + 22 new)
+
+## Phase 3: Store & AppKit Bridging (MoriKeybindings)
+
+**Status:** complete
+
+**Tasks completed:**
+- 3.1: Created `Packages/MoriKeybindings/Package.swift` (macOS 14+, depends on MoriCore, library + test target)
+- 3.2: Created `KeyBindingStore` (`@MainActor @Observable`) with merge, validate, update (with displacement), resetBinding, resetAll
+- 3.3: Wired `ConflictResult` into store's `validate()` method (returns `.lockedConflict`, `.configurableConflict`, or `.none`)
+- 3.4: Created `KeyBinding+AppKit` extension with `KeyModifiers <-> NSEvent.ModifierFlags` conversion, `Shortcut.matchesEvent(_:)`, and menu properties
+- 3.5: Wrote 48 test assertions in `MoriKeybindingsTests` (store lifecycle, conflict detection, displacement, reset, AppKit round-trips)
+- 3.6: Added `MoriKeybindings` dependency to root `Package.swift` (both package dependency and Mori target dependency)
+- 3.7: Added `test:keybindings` task to `mise.toml` and included in `mise run test`
+
+**Files changed:**
+- `Packages/MoriKeybindings/Package.swift` — package manifest
+- `Packages/MoriKeybindings/Sources/MoriKeybindings/KeyBindingStore.swift` — observable store with merge/validate/update/reset
+- `Packages/MoriKeybindings/Sources/MoriKeybindings/KeyBinding+AppKit.swift` — AppKit bridging extensions
+- `Packages/MoriKeybindings/Tests/MoriKeybindingsTests/Assert.swift` — test assertion helpers
+- `Packages/MoriKeybindings/Tests/MoriKeybindingsTests/main.swift` — 48 assertions across 21 test functions
+- `Package.swift` — added MoriKeybindings dependency
+- `mise.toml` — added test:keybindings task
+
+**Commits:**
+- `8ef65ce` — ✨ feat: add MoriKeybindings package with KeyBindingStore and AppKit bridging
+- `1827404` — ✅ test: add MoriKeybindings unit tests (48 assertions)
+- `897784f` — 🔧 chore: wire MoriKeybindings into root Package.swift and mise.toml
+
+**Decisions & context for next phase:**
+- `KeyBindingStore` is `@MainActor @Observable` — can be directly observed by SwiftUI views
+- `onBindingsChanged` callback is provided for AppDelegate to rebuild menus when bindings change
+- `update()` automatically displaces configurable conflicts (sets their shortcut to nil)
+- `persist()` uses sparse storage — only saves overrides that differ from defaults
+- `MockKeyBindingStorage` pattern in tests can be reused by other test targets
+- `Shortcut.matchesEvent(_:)` handles both keyCode-based matching (arrows, tab, return) and character-based matching
+- `Shortcut.menuKeyEquivalent` and `menuModifierMask` are ready for NSMenuItem integration
+- All 48 MoriKeybindings test assertions pass
+- All 678 MoriCore test assertions still pass
+
+## Phase 4: AppDelegate Wiring
+
+**Status:** complete
+
+**Tasks completed:**
+- 4.1: Added `keyBindingStore`, `configurableMenuItems`, `keyMonitorActionMap` properties to AppDelegate; initialized `KeyBindingStore` with `KeyBindingRepository` in `applicationDidFinishLaunching`
+- 4.2: Refactored `setupMainMenu()` to use `configurableMenuItem()` helper that reads shortcuts from the store; locked items (Edit, Quit, Hide, Minimize, Fullscreen) remain hardcoded
+- 4.3: Refactored `setupCommandPalette()` key monitor to use a `keyMonitorActionMap` dictionary + store binding loop instead of inline if/switch chain
+- 4.4: Added `rebuildMenuKeyBindings()` method and wired to `keyBindingStore.onBindingsChanged` callback
+- 4.5: Verified MoriKeybindings package builds; full Mori target requires GhosttyKit XCFramework (not available in CI-less env); code reviewed for correctness
+
+**Files changed:**
+- `Sources/Mori/App/AppDelegate.swift` — import MoriKeybindings, store initialization, refactored menu and key monitor
+
+**Commits:**
+- `03187d47` — ♻️ refactor: wire KeyBindingStore into AppDelegate for store-driven shortcuts
+
+**Decisions & context for next phase:**
+- `configurableMenuItems: [String: NSMenuItem]` maps binding IDs to menu items for live updates via `rebuildMenuKeyBindings()`
+- `keyMonitorActionMap: [String: () -> Void]` maps all 39 configurable binding IDs to action closures
+- Key monitor loop iterates `store.bindings` (filtered to `!isLocked`), calls `shortcut.matchesEvent(event)`, and dispatches via the action map
+- Not all bindings have corresponding menu items (e.g., `tabs.gotoTab1`-8, `commandPalette.toggle`, worktree cycling, pane nav/resize arrows) — these are handled solely by the key monitor
+- Menu items for these monitor-only bindings were intentionally omitted since they use keyCodes (arrows, tab) that don't map cleanly to `NSMenuItem.keyEquivalent`
+- `onBindingsChanged` callback ensures menu shortcuts stay in sync when bindings are modified at runtime
+- The `configurableMenuItem()` helper sets `item.target = self` for all configurable items (unlike the old `menuItem()` helper which had special logic for system selectors)
+
+## Phase 5: Settings UI
+
+**Status:** complete
+
+**Tasks completed:**
+- 5.1: Created `ShortcutRecorderView` — inline SwiftUI control for displaying and capturing keyboard shortcuts via `NSEvent.addLocalMonitorForEvents`
+- 5.2: Created `KeyBindingsSettingsView` — pure data + callbacks view with category grouping, per-row reset, locked conflict errors, and configurable conflict warnings with "Assign Anyway"/"Cancel"
+- 5.3: Integrated `KeyBindingsSettingsView` into `KeyboardSettingsContent`, replacing the static `moriKeybinds` list; threaded key binding callbacks through `GhosttySettingsView`
+- 5.4: Wired `KeyBindingStore` callbacks through `SettingsWindowContent` to `KeyBindingsSettingsView` in `AppDelegate.showSettingsWindow()`
+- 5.5: Added 73 new localization strings (en + zh-Hans) for shortcut recorder UI, category names, conflict messages, and all 50 keybinding display names
+
+**Files changed:**
+- `Packages/MoriUI/Sources/MoriUI/ShortcutRecorderView.swift` — new: shortcut recorder + `Shortcut.displayString` formatting
+- `Packages/MoriUI/Sources/MoriUI/KeyBindingsSettingsView.swift` — new: grouped editable binding list with conflict handling
+- `Packages/MoriUI/Sources/MoriUI/GhosttySettingsView.swift` — added `import MoriCore`, key binding parameters to `GhosttySettingsView` and `KeyboardSettingsContent`; replaced static Mori keybinds section with `KeyBindingsSettingsView`; Ghostty terminal keybinds kept as separate read-only section
+- `Sources/Mori/App/AppDelegate.swift` — updated `SettingsWindowContent` with key binding parameters; `showSettingsWindow()` passes `keyBindingStore` callbacks
+- `Packages/MoriUI/Sources/MoriUI/Resources/en.lproj/Localizable.strings` — 73 new entries
+- `Packages/MoriUI/Sources/MoriUI/Resources/zh-Hans.lproj/Localizable.strings` — 73 new entries
+
+**Commits:**
+- `f90f33ca` — ✨ feat: add ShortcutRecorderView for inline key capture
+- `c3c9e9b6` — ✨ feat: add KeyBindingsSettingsView with conflict handling
+- `ceeb5bcd` — ♻️ refactor: integrate KeyBindingsSettingsView into keyboard settings
+- `0a50b66e` — 🌐 i18n: add keyboard shortcut localization strings
+
+**Decisions & context for next phase:**
+- `ShortcutRecorderView` uses `NSEvent.addLocalMonitorForEvents(.keyDown)` — Escape cancels recording, bare modifier keys ignored, at least one modifier required for non-function keys
+- `Shortcut.displayString` formats with modifier symbols (⌃⌥⇧⌘) + key name; special keys mapped (arrows, return, tab, delete)
+- `KeyBindingsSettingsView` is pure (data + callbacks) — no dependency on MoriKeybindings, only MoriCore types
+- Ghostty terminal keybindings moved to separate card with explanatory note about `~/.config/ghostty/config`
+- All parameters are optional with defaults to maintain backward compatibility of `GhosttySettingsView.init()`
+- MoriUI uses `.strings` files (not `.xcstrings`) in `en.lproj` and `zh-Hans.lproj`
+- Display name localization uses `displayNameKey` directly as localization key (e.g., "keybinding.tabs.newTab" -> "New Tab")
+- The `keyBindings` state in `SettingsWindowContent` is `@State` — note: real-time updates from store require observing the store (currently snapshot at settings window creation). For Phase 6, consider whether re-opening settings should refresh, or observe changes live.
+- All 1100 test assertions pass (678 core + 64 persistence + 48 keybindings + 249 tmux + 61 IPC)
+- MoriUI builds clean in both debug and release mode
+
+## Phase 6: Documentation & Polish
+
+**Status:** complete
+
+**Tasks completed:**
+- 6.1: Updated `docs/keymaps.md` with "Customizing Shortcuts" section explaining Settings > Keyboard, conflict detection, reset, and sparse JSON persistence
+- 6.2: Updated `docs/keymaps.zh-Hans.md` with equivalent Chinese "自定义快捷键" section
+- 6.3: Updated `CHANGELOG.md` with `[Unreleased]` entries for customizable keyboard shortcuts feature
+- 6.4: Ran `mise run test` — all 1100 assertions pass (678 core + 64 persistence + 48 keybindings + 249 tmux + 61 IPC)
+
+**Files changed:**
+- `docs/keymaps.md` — added Customizing Shortcuts section before Ghostty Terminal section
+- `docs/keymaps.zh-Hans.md` — added 自定义快捷键 section (Chinese equivalent)
+- `CHANGELOG.md` — added 3 entries under `[Unreleased]` > `### ✨ Features`
+
+**Test results:**
+- MoriCore: 678 assertions passed
+- MoriPersistence: 64 assertions passed
+- MoriKeybindings: 48 assertions passed
+- MoriTmux: 249 assertions passed
+- MoriIPC: 61 assertions passed
+- Total: 1100 assertions, all passing
