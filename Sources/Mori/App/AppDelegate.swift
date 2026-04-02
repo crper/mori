@@ -865,6 +865,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let checkForUpdatesItem = NSMenuItem(title: .localized("Check for Updates…"), action: #selector(checkForUpdatesMenuAction), keyEquivalent: "")
         checkForUpdatesItem.target = self
         appMenu.addItem(checkForUpdatesItem)
+        let installCLIItem = NSMenuItem(title: cliSymlinkExists() ? .localized("Uninstall CLI…") : .localized("Install CLI…"), action: #selector(installOrUninstallCLIMenuAction), keyEquivalent: "")
+        installCLIItem.target = self
+        installCLIMenuItem = installCLIItem
+        appMenu.addItem(installCLIItem)
         appMenu.addItem(.separator())
         appMenu.addItem(configurableMenuItem("other.openProject", title: .localized("Open Project…"), action: #selector(openProjectMenuAction)))
         appMenu.addItem(.separator())
@@ -994,6 +998,188 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     @objc private func checkForUpdatesMenuAction() {
         updateController?.checkForUpdates()
+    }
+
+    // MARK: - CLI Installation
+
+    private static let cliSymlinkPath = "/usr/local/bin/mori"
+    private weak var installCLIMenuItem: NSMenuItem?
+
+    private func cliBinaryPath() -> String? {
+        let fm = FileManager.default
+        guard let bundlePath = Bundle.main.executablePath else { return nil }
+        let bundleDir = (bundlePath as NSString).deletingLastPathComponent
+
+        // 1. App bundle: .../Mori.app/Contents/MacOS/bin/mori
+        let bundleCLI = (bundleDir as NSString).appendingPathComponent("bin/mori")
+        if fm.fileExists(atPath: bundleCLI) { return bundleCLI }
+
+        // 2. Dev build: walk up from executable until we find .build-cli/
+        var dir = bundleDir
+        for _ in 0..<5 {
+            dir = (dir as NSString).deletingLastPathComponent
+            for config in ["release", "debug"] {
+                let devCLI = (dir as NSString).appendingPathComponent(".build-cli/\(config)/mori")
+                if fm.fileExists(atPath: devCLI) { return devCLI }
+            }
+        }
+
+        return nil
+    }
+
+    private func cliSymlinkExists() -> Bool {
+        if case .ours = cliSymlinkState() { return true }
+        return false
+    }
+
+    private enum CLISymlinkState {
+        case none                      // nothing at the path
+        case ours                      // symlink → our bundle CLI
+        case foreign(destination: String) // symlink → somewhere else
+        case regularFile               // not a symlink at all
+    }
+
+    private func cliSymlinkState() -> CLISymlinkState {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: Self.cliSymlinkPath) else { return .none }
+        guard let dest = try? fm.destinationOfSymbolicLink(atPath: Self.cliSymlinkPath) else {
+            return .regularFile
+        }
+        if let ourCLI = cliBinaryPath(),
+           URL(fileURLWithPath: dest).standardized == URL(fileURLWithPath: ourCLI).standardized {
+            return .ours
+        }
+        return .foreign(destination: dest)
+    }
+
+    @objc private func installOrUninstallCLIMenuAction() {
+        if cliSymlinkExists() {
+            uninstallCLI()
+        } else {
+            installCLI()
+        }
+    }
+
+    private func installCLI() {
+        guard let cliPath = cliBinaryPath() else {
+            showCLIAlert(
+                style: .warning,
+                message: .localized("CLI binary not found in application bundle."),
+                info: .localized("Please reinstall Mori to restore the CLI binary.")
+            )
+            return
+        }
+
+        let symlinkPath = Self.cliSymlinkPath
+        let binDir = (symlinkPath as NSString).deletingLastPathComponent
+
+        // Guard against overwriting a foreign symlink or regular file
+        switch cliSymlinkState() {
+        case .foreign(let destination):
+            let proceed = showCLIConfirmation(
+                message: .localized("Existing CLI found"),
+                info: String(format: .localized("%@ currently points to %@. Replace it?"), symlinkPath, destination)
+            )
+            guard proceed else { return }
+        case .regularFile:
+            showCLIAlert(
+                style: .warning,
+                message: .localized("CLI installation failed."),
+                info: String(format: .localized("A non-symlink file already exists at %@. Please remove it manually."), symlinkPath)
+            )
+            return
+        case .ours, .none:
+            break
+        }
+
+        let script = "mkdir -p \(shellEscaped(binDir)) && rm -f \(shellEscaped(symlinkPath)) && ln -s \(shellEscaped(cliPath)) \(shellEscaped(symlinkPath))"
+
+        let result = runWithAdminPrivileges(script: script)
+        switch result {
+        case .success:
+            showCLIAlert(
+                style: .informational,
+                message: .localized("CLI installed successfully."),
+                info: String(format: .localized("The `mori` command is now available at %@."), symlinkPath)
+            )
+        case .cancelled:
+            break
+        case .failure(let msg):
+            showCLIAlert(style: .warning, message: .localized("CLI installation failed."), info: msg)
+        }
+        updateCLIMenuItemTitle()
+    }
+
+    private func uninstallCLI() {
+        let symlinkPath = Self.cliSymlinkPath
+        let script = "rm -f \(shellEscaped(symlinkPath))"
+
+        let result = runWithAdminPrivileges(script: script)
+        switch result {
+        case .success:
+            showCLIAlert(
+                style: .informational,
+                message: .localized("CLI uninstalled successfully."),
+                info: String(format: .localized("The symlink at %@ has been removed."), symlinkPath)
+            )
+        case .cancelled:
+            break
+        case .failure(let msg):
+            showCLIAlert(style: .warning, message: .localized("CLI uninstallation failed."), info: msg)
+        }
+        updateCLIMenuItemTitle()
+    }
+
+    private func updateCLIMenuItemTitle() {
+        installCLIMenuItem?.title = cliSymlinkExists() ? .localized("Uninstall CLI…") : .localized("Install CLI…")
+    }
+
+    private func shellEscaped(_ s: String) -> String {
+        SSHCommandSupport.shellEscape(s)
+    }
+
+    private enum AdminPrivilegeResult {
+        case success
+        case cancelled
+        case failure(String)
+    }
+
+    private func runWithAdminPrivileges(script: String) -> AdminPrivilegeResult {
+        let escapedScript = script
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let appleScript = "do shell script \"\(escapedScript)\" with administrator privileges"
+        var error: NSDictionary?
+        guard let scriptObj = NSAppleScript(source: appleScript) else {
+            return .failure("Failed to create AppleScript.")
+        }
+        let descriptor = scriptObj.executeAndReturnError(&error)
+        if descriptor != nil { return .success }
+        // Error code -128 = user clicked Cancel
+        if let errorNumber = error?[NSAppleScript.errorNumber] as? Int, errorNumber == -128 {
+            return .cancelled
+        }
+        let msg = error?[NSAppleScript.errorMessage] as? String ?? .localized("Failed to create symlink. Please check your permissions.")
+        return .failure(msg)
+    }
+
+    private func showCLIAlert(style: NSAlert.Style, message: String, info: String) {
+        let alert = NSAlert()
+        alert.alertStyle = style
+        alert.messageText = message
+        alert.informativeText = info
+        alert.addButton(withTitle: .localized("OK"))
+        alert.runModal()
+    }
+
+    private func showCLIConfirmation(message: String, info: String) -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = message
+        alert.informativeText = info
+        alert.addButton(withTitle: .localized("Replace"))
+        alert.addButton(withTitle: .localized("Cancel"))
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     @objc private func openProjectMenuAction() {
