@@ -159,11 +159,18 @@ final class WorkspaceManager {
         guard appState.projects.isEmpty else { return }
         let homePath = NSHomeDirectory()
         let project = try? await addProject(path: homePath)
-        // Rename to "Home" for a friendlier first impression
-        if var p = project, let idx = appState.projects.firstIndex(where: { $0.id == p.id }) {
-            p.name = "Home"
-            appState.projects[idx] = p
-            try? projectRepo.save(p)
+        guard var p = project,
+              let pIdx = appState.projects.firstIndex(where: { $0.id == p.id }) else { return }
+        // Rename project and worktree to "Home" for a friendlier first impression
+        p.name = "Home"
+        appState.projects[pIdx] = p
+        try? projectRepo.save(p)
+
+        if var wt = appState.worktrees.first(where: { $0.projectId == p.id }),
+           let wIdx = appState.worktrees.firstIndex(where: { $0.id == wt.id }) {
+            wt.name = "Home"
+            appState.worktrees[wIdx] = wt
+            try? worktreeRepo.save(wt)
         }
     }
 
@@ -562,15 +569,16 @@ final class WorkspaceManager {
         // Best effort git detection
         let isRepo = try await git.isGitRepo(path: path)
         var commonDir = path
-        var detectedBranch = "main"
+        var detectedBranch: String?
         if isRepo {
             commonDir = try await git.gitCommonDir(path: path)
             // Detect the actual current branch
             let gitStatus = try? await git.status(worktreePath: path)
-            if let branch = gitStatus?.branch {
-                detectedBranch = branch
-            }
+            detectedBranch = gitStatus?.branch ?? "main"
         }
+
+        // For non-git dirs, use the folder name as worktree name
+        let worktreeName = detectedBranch ?? name
 
         // Create project
         let project = Project(
@@ -583,10 +591,10 @@ final class WorkspaceManager {
         try projectRepo.save(project)
 
         // Create default worktree
-        let sessionName = SessionNaming.sessionName(projectShortName: project.shortName, worktree: detectedBranch)
+        let sessionName = SessionNaming.sessionName(projectShortName: project.shortName, worktree: worktreeName)
         let worktree = Worktree(
             projectId: project.id,
-            name: detectedBranch,
+            name: worktreeName,
             path: path,
             branch: detectedBranch,
             isMainWorktree: true,

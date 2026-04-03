@@ -35,14 +35,14 @@ public struct WorktreeRowView: View {
 
                 VStack(alignment: .leading, spacing: MoriTokens.Spacing.xxs) {
                     HStack(spacing: MoriTokens.Spacing.sm) {
-                        Text(worktree.branch ?? worktree.name)
+                        Text(worktree.name)
                             .font(.system(.body, weight: .semibold))
                             .lineLimit(1)
 
                         gitStatusBadges
                     }
 
-                    subtitleText
+                    statusLine
                 }
 
                 Spacer(minLength: 0)
@@ -119,14 +119,17 @@ public struct WorktreeRowView: View {
         }
     }
 
-    // MARK: - Subtitle
+    // MARK: - Status Line
 
-    private var subtitleText: some View {
+    private var statusLine: some View {
         HStack(spacing: MoriTokens.Spacing.sm) {
-            Text(worktree.name)
-                .font(MoriTokens.Font.caption)
-                .foregroundStyle(MoriTokens.Color.muted)
-                .lineLimit(1)
+            // Show branch only when it differs from the worktree name
+            if let branch = worktree.branch, branch != worktree.name {
+                Text(branch)
+                    .font(MoriTokens.Font.caption)
+                    .foregroundStyle(MoriTokens.Color.muted)
+                    .lineLimit(1)
+            }
 
             if worktree.status == .active {
                 Circle()
